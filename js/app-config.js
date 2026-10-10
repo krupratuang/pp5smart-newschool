@@ -3,8 +3,9 @@
 // ห้ามใส่ service_role key, รหัสผ่าน หรือ secret ใด ๆ ในไฟล์นี้
 window.PP5_CONFIG = {
   // Supabase > Project Settings > API: Project URL และ anon public key
-  supabaseUrl: 'https://YOUR-PROJECT-REF.supabase.co',
-  supabaseAnonKey: 'YOUR-ANON-PUBLIC-KEY',
+   supabaseUrl: 'https://nlelrcnbsjvlpwhaclwn.supabase.co',
+  supabaseAnonKey: 'sb_publishable_NJ1H8049k5eBU2YwTrhedg_WwINPBeO',
+
   // ที่อยู่เว็บที่ส่งให้ผู้ปกครอง เช่น https://pp5.your-school.ac.th (เว้นว่าง = ใช้ที่อยู่ที่เปิดเว็บอยู่)
   siteUrl: '',
   // ชื่อผู้ใช้สั้น -> อีเมลเข้าระบบ (ไม่บังคับ) เช่น { admin: 'admin@your-school.ac.th' }
