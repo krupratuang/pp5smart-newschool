@@ -165,28 +165,30 @@ ${state.isAdmin ? `<form class="pp5-club-form" data-form>
       });
     }
 
-    // ครูที่ปรึกษา: เลือกจากรายชื่อครูของโรงเรียน = ครูประจำชั้น / ครูประจำวิชา / รายชื่อครู (owner 2026-10-14)
-    // ไม่ใช้ชื่อบัญชีผู้ใช้ในระบบ (owner: "เอามาจากรายชื่อครู ไม่ต้องเอามาจากรายชื่อในระบบ") · ยังพิมพ์ชื่อเองได้ (วิทยากร)
+    // ครูที่ปรึกษา (owner 2026-10-14): ครูประจำชั้น (หน้า "ครูประจำชั้น", ปีนี้ ครู 1 และครู 2) + ครูประจำวิชา (ครูผู้สอนในหน้ารายวิชา)
+    // เพื่อให้ "ครูที่ไม่ได้ประจำชั้น" เลือกได้ด้วย · ไม่ใช้บัญชีผู้ใช้ในระบบ และไม่ใช้ตาราง teachers เก่า (ไม่มีหน้าไหนใช้แล้ว
+    // ของโรงเรียนเจ้าของเก็บเป็นตัวเลข 764 …) · ครูอื่น/วิทยากรพิมพ์ชื่อเองได้
     async function fillTeacherChoices(list) {
       if (!list) return;
       const names = new Map(); // ชื่อ -> ที่มา
       // ชื่อเรียกบัญชีทั่วไป (เช่น "ผู้ดูแลระบบ") ไม่ใช่ชื่อคน: ไม่ใส่ในรายการ (owner 2026-10-14)
       const ACCOUNT_LABEL = /^(ผู้ดูแล(ระบบ)?|แอดมิน|admin(istrator)?|ครู|teacher|test|ทดสอบ)$/i;
-      const add = (name, from) => { const n = String(name || '').replace(/\s+/g, ' ').trim(); if (n && !ACCOUNT_LABEL.test(n) && !names.has(n)) names.set(n, from); };
+      // ต้องเป็นชื่อคน: มีตัวอักษรไทยหรืออังกฤษอย่างน้อย 2 ตัว — รหัสตัวเลขล้วน (เช่น "764" จากข้อมูลเก่า
+      // ในตาราง teachers ของโรงเรียนเจ้าของ) ไม่ขึ้น (owner 2026-10-14: "เว็บจริงไม่ควรมีชื่อแบบนี้ขึ้น")
+      const PERSON_NAME = /[A-Za-zก-ฮ].*[A-Za-zก-ฮ]/;
+      const add = (name, from) => { const n = String(name || '').replace(/\s+/g, ' ').trim(); if (n && PERSON_NAME.test(n) && !ACCOUNT_LABEL.test(n) && !names.has(n)) names.set(n, from); };
       const read = async (table, columns, configure) => {
         let query = client().from(table).select(columns);
         if (configure) query = configure(query);
         const { data, error } = await query;
         return error ? [] : (data || []);
       };
-      const [homeroom, subjects, teachers] = await Promise.all([
+      const [homeroom, subjects] = await Promise.all([
         read('teacher_assignments', 'teacher_name,teacher_name_2,grade,room', (q) => q.eq('academic_year', state.year)),
-        read('subjects', 'teacher_name,name,grade'),
-        read('teachers', 'name')
+        read('subjects', 'teacher_name,name,grade')
       ]);
       homeroom.forEach((r) => { add(r.teacher_name, `ครูประจำชั้น ${r.grade}/${r.room}`); add(r.teacher_name_2, `ครูประจำชั้น ${r.grade}/${r.room}`); });
       subjects.forEach((r) => add(r.teacher_name, `ครูประจำวิชา ${r.name}`));
-      teachers.forEach((r) => add(r.name, 'รายชื่อครู'));
       list.innerHTML = [...names.entries()].sort((a, b) => a[0].localeCompare(b[0], 'th'))
         .map(([name, from]) => `<option value="${esc(name)}">${esc(from)}</option>`).join('');
     }
