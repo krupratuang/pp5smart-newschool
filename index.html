@@ -60,9 +60,14 @@
   <link rel="stylesheet" href="css/user-theme.css?v=1">
   <link rel="stylesheet" href="css/score-focus.css?v=1">
   <link rel="stylesheet" href="css/attendance-monthly.css?v=4">
-  <link rel="stylesheet" href="css/attendance-daily.css?v=1">
+  <link rel="stylesheet" href="css/attendance-table.css?v=1">
+  <link rel="stylesheet" href="css/attendance-daily.css?v=2">
   <link rel="stylesheet" href="css/subject-manager.css?v=1">
   <link rel="stylesheet" href="css/homeroom-roadmap.css?v=2">
+  <!-- ระบบปุ่มใหม่ + แท็บด้านบน (owner 2026-10-14) ต้องอยู่หลังสไตล์อื่นทั้งหมด -->
+  <link rel="stylesheet" href="css/button-system.css?v=1">
+  <link rel="stylesheet" href="css/login-split.css?v=7">
+  <link rel="stylesheet" href="css/auth-pages.css?v=1">
 
   <!-- Theme Manager (Light / Dark Mode) -->
   <script>
@@ -206,7 +211,7 @@
       <li class="nav-item admin-only" data-page="teacher_editor"><a href="#" class="nav-link" data-page="teacher_editor"><i class="bi bi-person-video3"></i> ครูประจำชั้น</a></li>
       <li class="nav-item admin-only" data-page="admin_panel"><a href="#" class="nav-link" data-page="admin_panel"><i class="bi bi-person-gear"></i> ผู้ใช้และสิทธิ์</a></li>
       <li class="nav-item admin-only" data-page="teacher_access"><a href="#" class="nav-link" data-page="teacher_access"><i class="bi bi-person-check"></i> มอบหมายงานครู</a></li>
-      <li class="nav-item admin-only master-only"><a href="#" class="nav-link" onclick="AppNavigation.exportSystemZip();return false;"><i class="bi bi-box-arrow-up-right"></i> ส่งออกชุดติดตั้งโรงเรียนใหม่</a></li>
+      <li class="nav-item admin-only"><a href="#" class="nav-link" onclick="AppNavigation.exportSystemZip();return false;"><i class="bi bi-box-arrow-up-right"></i> คู่มือติดตั้งโรงเรียนอื่น</a></li>
     </ul>
 
     <ul class="menu-group" aria-label="ข้อมูลนักเรียน">
@@ -481,19 +486,22 @@
   <!-- หน้าตาโรงเรียน: ธีมสี + แบนเนอร์หน้าหลัก + แท็บตั้งค่า (หลัง supabaseClient, ก่อน spa-main) -->
   <script src="js/school-branding.js?v=4"></script>
   <!-- แถบหัวหน้าแบบแบนเนอร์หน้าหลัก (ใช้ PP5SchoolBranding จึงต้องโหลดหลัง school-branding) -->
-  <script src="js/page-banner.js?v=6"></script>
+  <script src="js/page-banner.js?v=7"></script>
   <!-- ธีมสีส่วนตัว: ปุ่มจานสีที่หัวเว็บ (ใช้ PP5SchoolBranding จึงโหลดหลัง school-branding) -->
   <script src="js/user-theme.js?v=1"></script>
   <!-- หน้ากรอกคะแนนบนมือถือ: กรอกทีละครั้ง -->
   <script src="js/score-focus.js?v=1"></script>
   <!-- เช็คชื่อรายวันบนมือถือ: แถบบันทึกด้านล่างขึ้นเฉพาะตอนยังไม่ได้บันทึก (ห่อ GasServer จึงโหลดหลัง gas-bridge) -->
-  <script src="js/attendance-daily-bar.js?v=1"></script>
+  <script src="js/attendance-daily-bar.js?v=2"></script>
   <!-- รายชื่อนักเรียน: โหลดตามชั้น/ห้องที่เลือกเอง (ห่อ GasServer จึงโหลดหลัง gas-bridge) -->
   <script src="js/student-list-autoload.js?v=1"></script>
   <!-- วิชารายภาค (ม.ต้น): หน้าบันทึกคะแนนเปิดเฉพาะแท็บภาคของวิชา -->
   <script src="js/semester-subjects.js?v=1"></script>
-  <script src="js/teacher-permissions.js?v=8"></script>
-  <script src="js/spa-main.js?v=145"></script>
+  <script src="js/teacher-permissions.js?v=9"></script>
+  <script src="js/install-guide.js?v=8"></script>
+  <script src="js/button-system.js?v=2"></script>
+  <script src="js/login-layout.js?v=3"></script>
+  <script src="js/spa-main.js?v=147"></script>
   <script src="js/exam-import.js?v=3"></script>
 
 <script>
