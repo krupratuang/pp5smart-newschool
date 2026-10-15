@@ -11,12 +11,23 @@
   // getGlobalSettings reads the existing public settings under RLS, not private signatures.
   const PUBLIC_AUTH_METHODS = new Set(['requestPasswordReset','clearLoginSession','getDeploymentUrl','getLoginPageHtml','getGlobalSettings']);
   // club_management: club advisors teach across rooms (ระบบชุมนุม 2026-10-14) — writes still go through pp5_club_set_member
-  const COMMON = new Set(['home_hub','dashboard','change_password','academic_calendar','club_management']);
-  const SUBJECT = new Set(['create_score_sheet','score_table_viewer','subject_score_viewer','exam_analysis']);
+  // help_page: คู่มือของทุกคน (owner 2026-10-14 ไล่แก้เมนูที่หลุดจากรายการ)
+  const COMMON = new Set(['home_hub','dashboard','change_password','academic_calendar','club_management','help_page']);
+  // subject_attendance / pp5_subject_book: เช็คชื่อรายวิชา (รายชั่วโมง) และ ปพ.5 แบบรายวิชา ของครูผู้สอน — สิทธิ์เขียนจริงตรวจที่ pp5_save_subject_attendance (SQL 031)
+  const SUBJECT = new Set(['create_score_sheet','score_table_viewer','subject_score_viewer','exam_analysis','subject_attendance','pp5_subject_book',
+    // subject_schedule: ตารางสอนของฉัน (SQL 032) — ต้องตั้งก่อนเช็คชื่อรายคาบ สิทธิ์จริงตรวจที่ pp5_save_subject_schedule
+    'subject_schedule',
+    // subject_attendance_summary: สรุปเวลาเรียนรายวิชา รายเดือน/รายภาค/ทั้งปี (อ่านอย่างเดียว ตาม RLS ของ subject_attendance)
+    'subject_attendance_summary',
+    // export_reports: ศูนย์รวมลิงก์รายงานของห้องที่ได้รับมอบหมาย (หน้าปลายทางตรวจสิทธิ์ของตัวเอง)
+    'export_reports']);
   const HOMEROOM = new Set(['studentList','export_pdf_page','behavior_records','student_growth_entry','student_growth_report',
     'attendance_daily','attendance_monthly','attendance_table','semester_attendance_summary','student_scores_summary',
     'read_think_write_form','rtw5_assessment','characteristic_assessment','activity_assessment','competency_assessment',
-    'teacher_comment_form_backup','report_card_generator','report_card_scores','one_page_report','pp5_full_book','schoolmis_sync']);
+    'teacher_comment_form_backup','report_card_generator','report_card_scores','one_page_report','pp5_full_book','pp5_cover_page','schoolmis_sync',
+    // owner 2026-10-14 (ไล่แก้ทีละข้อ): หน้าในเมนูครูที่หลุดจากรายการ — ครูประจำชั้นเปิดได้เมื่อเปิดระบบสิทธิ์ครู
+    // (ปุ่มอนุมัติ/ตีกลับ ปพ.5 ยังเป็นงานผู้ดูแลตาม ADMIN_METHODS; ส่งงานของห้องตัวเองเท่านั้นตามคู่ ชั้น/ห้อง)
+    'teacher_comment_form','class_score_summary','class_assessment_summary','parent_info_report','pp5_readiness','pp5_approval']);
   const PARENT = new Set(['parent_portal','change_password']);
   const ADMIN_METHODS = /^(?:getAllUsers|addUser|updateUser|deleteUser|createUser|saveTeacher|saveSingleTeacher|getTeacherListForEditor|saveSystem|setGlobal|saveGlobal|setLogo|uploadLogo|saveSchoolSignatures|markPp5Reviewed|approvePp5Class|returnPp5ForCorrection|.*Transition|.*Rollback|importStudent|.*Dmc|.*DMC|.*ProjectAsZip|.*SchoolSar|.*SarAnalytics|.*Warehouse)/;
   const HOMEROOM_METHODS = /(?:Pp6|ReportCard|OnePage|StudentReport|StudentFullData|ParentInfo|Growth|Competency|Characteristic|Assessment|ReadThink|Pp5Full|Pp5Cover|Comment|Attendance|Behavior)/i;
@@ -45,7 +56,8 @@
   function restrictGradeChoices() {
     if (!uiContext?.enabled || uiContext.role!=='teacher') return;
     const page=global.document?.body?.getAttribute('data-current-page') || global.AppNavigation?.currentPage;
-    const assignments=active(uiContext).filter((a)=>!HOMEROOM.has(page)||a.scope==='homeroom');
+    // โหมดการทำงาน (js/work-mode.js): ห้องในตัวเลือกเฉพาะงานของโหมดที่ครูเลือก
+    const assignments=active(uiContext).filter((a)=>(!HOMEROOM.has(page)||a.scope==='homeroom') && keepsMode(a,uiContext));
     const grades=new Set(assignments.map((a)=>a.grade));
     selectReportRoom(page);
     global.document?.querySelectorAll('#contentFrame select').forEach((select)=>{
@@ -115,19 +127,24 @@
     }
   }
   const active = (ctx, year) => (ctx.assignments || []).filter((a) => a.active !== false && a.academic_year === (year || ctx.academicYear));
-  function pageAllowed(page, ctx) {
+  const keepsMode = (a, ctx) => global.PP5WorkMode?.keeps?.(a, ctx) !== false;
+  // ignoreMode: ใช้แยกข้อความ "สลับโหมดก่อน" ออกจาก "ไม่ได้รับสิทธิ์" — สิทธิ์จริงไม่ขึ้นกับโหมด
+  function pageAllowed(page, ctx, ignoreMode) {
     if (PUBLIC.has(page)) return true;
     if (!ctx.enabled || ctx.role === 'admin') return true;
     if (ctx.role === 'parent') return PARENT.has(page);
     if (ctx.role !== 'teacher') return false;
     if (COMMON.has(page)) return true;
-    const assignments = active(ctx);
+    const assignments = active(ctx).filter((a) => ignoreMode || keepsMode(a, ctx));
     if (SUBJECT.has(page)) return assignments.length > 0;
     return HOMEROOM.has(page) && assignments.some((a) => a.scope === 'homeroom');
   }
   async function authorizePage(page) {
     if (PUBLIC.has(page)) return;
-    if (!pageAllowed(page, await context())) fail('บัญชีนี้ไม่ได้รับสิทธิ์เปิดหน้านี้ กรุณาติดต่อผู้ดูแล');
+    const ctx = await context();
+    if (pageAllowed(page, ctx)) return;
+    if (pageAllowed(page, ctx, true)) fail('หน้านี้เป็นงานของ'+(HOMEROOM.has(page)?'ครูประจำชั้น':'ครูประจำวิชา')+' — กดป้ายบทบาทมุมบนเพื่อสลับโหมดก่อน');
+    fail('บัญชีนี้ไม่ได้รับสิทธิ์เปิดหน้านี้ กรุณาติดต่อผู้ดูแล');
   }
   function attendanceAcademicYear(calendarYear, zeroBasedMonth) {
     let year=Number(calendarYear);
@@ -237,7 +254,7 @@
       const rows = await originalSubjects.call(this,grade);
       const ctx = await context();
       if (!ctx.enabled || ctx.role !== 'teacher') return rows;
-      return rows.filter((s) => (ctx.assignments || []).some((a) =>
+      return rows.filter((s) => (ctx.assignments || []).some((a) => keepsMode(a, ctx) &&
         a.grade === s.grade && (a.scope === 'homeroom' || a.subject_id === s.id)));
     };
   }
@@ -366,6 +383,7 @@
     try {
       const ctx=await context();
       uiContext=ctx;
+      global.PP5WorkMode?.apply?.(ctx);
       if (!ctx.enabled) return;
       global.document?.querySelectorAll('.nav-item[data-page], .hub-card[data-page]').forEach((item)=>{
         item.hidden=!pageAllowed(item.dataset.page,ctx);
