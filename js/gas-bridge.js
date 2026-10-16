@@ -1520,29 +1520,62 @@
     return results.some((value) => value === null) ? null : (results.every((value) => value === 1) ? 1 : 0);
   }
 
+  // ครูประจำวิชาใช้หน้าประเมินเดิม (owner 2026-10-16: "เอามาจากระบบที่มีอยู่แล้ว"): js/subject-assessment.js ตั้ง
+  // PP5AssessmentSubject = { subjectId, grade, room, semester } แล้วหน้าเดิมจะอ่าน/เขียนแถว subj_* ของวิชานั้นรายภาค
+  // (criteria_code = '<subject id>|c1', SQL 202610150034) แทนผลประจำชั้น · ห้องไม่ตรงกับที่เลือก = ไม่ใช้ (กันค้างข้ามหน้า)
+  const SUBJECT_ASSESSMENT_TYPES = { characteristic: 'subj_char', rtw: 'subj_rtw', competency: 'subj_comp' };
+  function subjectAssessment(type, grade, classNo) {
+    const ctx = global.PP5AssessmentSubject;
+    const subjType = SUBJECT_ASSESSMENT_TYPES[type];
+    if (!ctx || !subjType || !text(ctx.subjectId)) return null;
+    if (grade !== undefined && (text(grade) !== text(ctx.grade) || text(classNo) !== text(ctx.room))) return null;
+    const prefix = `${text(ctx.subjectId)}|`;
+    return { type: subjType, prefix, semester: Number(ctx.semester) === 2 ? 2 : 1 };
+  }
+
+  // หัวกระดาษ PDF เมื่อครูประจำวิชาส่งออกจากหน้าประเมินเดิม (Codex 2026-10-16: ยังเป็นข้อความแบบครูประจำชั้น)
+  async function assessmentPrintDetail(type, detail, grade, classNo) {
+    const subj = subjectAssessment(type, grade, classNo);
+    if (!subj) return detail;
+    const id = text(global.PP5AssessmentSubject.subjectId);
+    let subject = null;
+    try { subject = (await data.subjects.list(grade)).find((row) => text(row.id) === id) || null; } catch (_) { subject = null; }
+    const name = [subject?.code, subject?.name].map(text).filter(Boolean).join(' ') || id;
+    return `${detail} · วิชา ${name} ภาคเรียนที่ ${subj.semester} (ครูผู้สอนประเมิน)`;
+  }
+
   async function loadAssessment(type, prefix, count, grade, classNo, semester = 1, academicYear) {
     const year = text(academicYear || await currentYear());
     const students = await data.students.list({ grade, room: classNo, academicYear: year });
-    const rows = await data.assessments.list(type, semester, students.map((student) => student.id), year);
+    const subj = subjectAssessment(type, grade, classNo);
+    const ids = students.map((student) => student.id);
+    const rows = !subj ? await data.assessments.list(type, semester, ids, year)
+      : (ids.length ? await optionalTableAll('assessments', (q) => q.eq('assessment_type', subj.type).eq('academic_year', year)
+        .eq('semester', subj.semester).like('criteria_code', `${subj.prefix}%`).in('student_id', ids).order('id')) : []);
     const grouped = {};
     rows.forEach((row) => {
+      const code = text(row.criteria_code);
+      if (subj && !code.startsWith(subj.prefix)) return;
       grouped[row.student_id] ||= {};
-      grouped[row.student_id][row.criteria_code] = row.score;
+      grouped[row.student_id][subj ? code.slice(subj.prefix.length) : row.criteria_code] = row.score;
     });
     return students.map((student) => assessmentStudent(student, grouped[student.id], prefix, count));
   }
 
-  async function saveAssessment(type, prefix, payload, defaultSemester = 1) {
+  async function saveAssessment(officialType, prefix, payload, defaultSemester = 1) {
     const list = Array.isArray(payload) ? payload : (payload?.students || payload?.records || []);
     const year = text(payload?.academicYear || payload?.academic_year || await currentYear());
-    const semester = number(payload?.semester, defaultSemester);
+    const subj = subjectAssessment(officialType);
+    const type = subj ? subj.type : officialType;
+    const semester = subj ? subj.semester : number(payload?.semester, defaultSemester);
     const rows = [];
     // ค่าที่ว่าง (= ยังไม่ประเมิน) ต้อง "ลบแถวเดิม" ไม่ใช่ข้ามไปเฉย ๆ ไม่งั้นผู้ใช้ล้างค่าไม่ได้เลย
     const clears = [];
     list.forEach((student) => {
       const studentId = text(student.studentId || student.student_id || student.id);
       const rawScores = student.scores ?? student.criteria ?? student.values ?? {};
-      const collect = (criteriaCode, score) => {
+      const collect = (rawCode, score) => {
+        const criteriaCode = subj ? `${subj.prefix}${rawCode}` : rawCode;
         if (score === '' || score === null || score === undefined) {
           if (studentId) clears.push({ studentId, criteriaCode });
           return;
@@ -1655,7 +1688,7 @@
       }
       return text(a.studentId).localeCompare(text(b.studentId), undefined, { numeric: true });
     });
-    const options = await attendancePrintOptions(grade, classNo, 'คุณลักษณะอันพึงประสงค์');
+    const options = await attendancePrintOptions(grade, classNo, await assessmentPrintDetail('characteristic', 'คุณลักษณะอันพึงประสงค์', grade, classNo));
     if (global.PP5PDF?.createCharacteristicReport) {
       const result = await global.PP5PDF.createCharacteristicReport({ grade, classNo, students: sorted }, options);
       return typeof result === 'object' && result?.dataUri ? result.dataUri : (typeof result === 'object' && result?.blobUrl ? result.blobUrl : result);
@@ -1847,7 +1880,7 @@
       }
       return text(a.studentId).localeCompare(text(b.studentId), undefined, { numeric: true });
     });
-    const options = await attendancePrintOptions(grade, classNo, 'สมรรถนะสำคัญของผู้เรียน');
+    const options = await attendancePrintOptions(grade, classNo, await assessmentPrintDetail('competency', 'สมรรถนะสำคัญของผู้เรียน', grade, classNo));
     if (global.PP5PDF?.createCompetencyReport) {
       const result = await global.PP5PDF.createCompetencyReport({ grade, classNo, students: sorted }, options);
       return typeof result === 'object' && result?.dataUri ? result.dataUri : (typeof result === 'object' && result?.blobUrl ? result.blobUrl : result);
@@ -1858,7 +1891,7 @@
   async function generateCompetencySummaryPdf(grade, classNo) {
     const students = await loadAssessment('competency', 'cp', 25, grade, classNo);
     if (!students.length) throw new Error('ไม่พบข้อมูลนักเรียน');
-    const options = await attendancePrintOptions(grade, classNo, 'สรุปผลการประเมินสมรรถนะสำคัญ');
+    const options = await attendancePrintOptions(grade, classNo, await assessmentPrintDetail('competency', 'สรุปผลการประเมินสมรรถนะสำคัญ', grade, classNo));
     if (global.PP5PDF?.createCompetencySummaryReport) {
       const result = await global.PP5PDF.createCompetencySummaryReport({ grade, classNo, students }, options);
       return typeof result === 'object' && result?.dataUri ? result.dataUri : (typeof result === 'object' && result?.blobUrl ? result.blobUrl : result);
@@ -2033,6 +2066,21 @@
     return year && typeof year === 'object' ? year : {};
   }
 
+  // มส. ตามระเบียบ (owner 2026-10-16): ต้องมีเวลาเรียนไม่น้อยกว่าร้อยละ 80 ของเวลาเรียนทั้งหมดของวิชา = ขาดได้ไม่เกินร้อยละ 20
+  // ของชั่วโมงทั้งปี (วิชาทั้งปี รายภาค = ครึ่งหนึ่ง) · ลาไม่นับเป็นขาด (เจ้าของเลือก)
+  //   ร้อยละเวลาเรียน = (เวลาทั้งหมด − เวลาที่ขาด) ÷ เวลาทั้งหมด — ระหว่างปีคือ "ถ้าไม่ขาดอีกจะได้เท่านี้" ขาดเกินโควตา = มส. แน่นอน
+  //   ยังไม่มีบันทึกเลย = null · วิชาที่ไม่ได้ตั้งชั่วโมง = เทียบกับเวลาที่บันทึกแล้ว (ลาไม่นับเป็นขาดเช่นกัน)
+  //   เช็คชื่อรายวัน: 1 วัน = ชั่วโมงของวิชา ÷ 200 วัน/ปี (100 วัน/ภาค) ตามปีการศึกษา 200 วัน
+  const SCHOOL_DAYS_PER_YEAR = 200;
+  function attendanceRulePct(absent, recordedTotal, fullTime) {
+    if (!recordedTotal) return null;
+    const base = fullTime > 0 ? fullTime : recordedTotal;
+    return Math.round(Math.max(0, (base - Math.min(absent, base)) / base) * 1000) / 10;
+  }
+  // ชั่วโมงเต็มของช่วงที่คิด: ทั้งปี = ชั่วโมงของวิชา · ภาคเดียวของวิชาทั้งปี = ครึ่งหนึ่ง · วิชารายภาค = ชั่วโมงของวิชา
+  const attendanceFullHours = (hours, semester, ownSemester) => (!hours ? 0 : semester && !ownSemester ? hours / 2 : hours);
+  const roundTenth = (value) => Math.round(value * 10) / 10;
+
   async function computePp5SubjectSheets(grade, classNo, students, subjectId, requestedYear, teacherOverrides) {
     const settings = await data.settings.get();
     const academicYear = text(requestedYear || settings.academicYear || settings.academic_year || '');
@@ -2150,6 +2198,7 @@
       });
       const byStudent = groupBy(rows, (row) => text(row.student_id));
       const hours = Number(subject.hours_per_year ?? subject.hoursPerYear) || 0;
+      const fullHours = attendanceFullHours(hours, semester, subjectSemester_(subject));
       const list = students.map((student, index) => {
         const sum = { present: 0, leave: 0, absent: 0, total: 0 };
         (byStudent[text(student.id)] || []).forEach((row) => {
@@ -2158,12 +2207,13 @@
           sum[row.status] += h;
           sum.total += h;
         });
-        const pct = sum.total ? Math.round((sum.present / sum.total) * 1000) / 10 : null;
+        const pct = attendanceRulePct(sum.absent, sum.total, fullHours);
         return {
           no: text(student.studentNumber ?? student.student_number) || String(index + 1),
           code: text(student.id),
           name: studentDisplayName(student),
           present: sum.present, leave: sum.leave, absent: sum.absent, total: sum.total, pct,
+          absentHours: sum.absent,
           hours: pct === null ? null : sum.present,
           below: pct !== null && pct < 80
         };
@@ -2171,7 +2221,7 @@
       return {
         months: attendanceMonths(rows.map((row) => ({ date: normalizeDate(row.attendance_date), sid: text(row.student_id), status: text(row.status), hours: row.hours, period: row.period })), true),
         mode: 'hourly', first: att.first, last: att.last, schoolDays: taughtDays.size,
-        taughtHours: [...taughtByDate.values()].reduce((a, b) => a + b, 0), hours, students: list,
+        taughtHours: [...taughtByDate.values()].reduce((a, b) => a + b, 0), hours, fullHours, students: list,
         over: list.filter((row) => row.pct !== null && !row.below).length,
         under: list.filter((row) => row.below).length,
         noData: list.filter((row) => row.pct === null).length
@@ -2181,21 +2231,25 @@
       const att = await attendanceFor(semester);
       const sums = new Map(summarizeAttendanceRows(students, att.rows, true).map((row) => [row.studentId, row]));
       const hours = Number(subject.hours_per_year ?? subject.hoursPerYear) || 0;
+      const own = subjectSemester_(subject);
+      const fullHours = attendanceFullHours(hours, semester, own);
+      const perDay = fullHours ? fullHours / (semester || own ? SCHOOL_DAYS_PER_YEAR / 2 : SCHOOL_DAYS_PER_YEAR) : 0;
       const list = students.map((student, index) => {
         const sum = sums.get(text(student.id)) || { present: 0, leave: 0, absent: 0, total: 0 };
-        const pct = sum.total ? Math.round((sum.present / sum.total) * 1000) / 10 : null;
+        const absentHours = perDay ? roundTenth(sum.absent * perDay) : null;
+        const pct = perDay ? attendanceRulePct(absentHours, sum.total, fullHours) : attendanceRulePct(sum.absent, sum.total, 0);
         return {
           no: text(student.studentNumber ?? student.student_number) || String(index + 1),
           code: text(student.id),
           name: studentDisplayName(student),
-          present: sum.present, leave: sum.leave, absent: sum.absent, total: sum.total, pct,
+          present: sum.present, leave: sum.leave, absent: sum.absent, total: sum.total, pct, absentHours,
           hours: pct === null || !hours ? null : Math.round((hours * sum.present) / sum.total),
           below: pct !== null && pct < 80
         };
       });
       return {
         months: attendanceMonths(att.rows.map((row) => ({ date: row.attendance_date, sid: text(row.student_id), status: row.status })), false),
-        mode: 'daily', first: att.first, last: att.last, schoolDays: countRecordedSchoolDays(att.rows), hours, students: list,
+        mode: 'daily', first: att.first, last: att.last, schoolDays: countRecordedSchoolDays(att.rows), hours, fullHours, students: list,
         over: list.filter((row) => row.pct !== null && !row.below).length,
         under: list.filter((row) => row.below).length,
         noData: list.filter((row) => row.pct === null).length
@@ -2230,15 +2284,18 @@
       };
       const list = students.map((student, index) => {
         const sum = { present: 0, leave: 0, absent: 0, total: 0 };
+        let absentHours = 0;
         parts.forEach((part) => {
           const row = part.students.find((r) => r.code === text(student.id));
           const add = part.mode === 'hourly' ? row : toHours(row);
           ['present', 'leave', 'absent', 'total'].forEach((k) => { sum[k] += number(add?.[k], 0); });
+          absentHours += number(row?.absentHours ?? add?.absent, 0);
         });
-        const pct = sum.total ? Math.round((sum.present / sum.total) * 1000) / 10 : null;
+        absentHours = roundTenth(absentHours);
+        const pct = hours ? attendanceRulePct(absentHours, sum.total, hours) : attendanceRulePct(sum.absent, sum.total, 0);
         return {
           no: text(student.studentNumber ?? student.student_number) || String(index + 1), code: text(student.id), name: studentDisplayName(student),
-          ...sum, pct, hours: pct === null ? null : sum.present, below: pct !== null && pct < 80
+          ...sum, pct, absentHours, hours: pct === null ? null : sum.present, below: pct !== null && pct < 80
         };
       });
       const describe = parts.map((part) => `ภาค ${part.semesterNo} ${part.mode === 'hourly' ? 'เช็คชื่อรายคาบ' : `เช็คชื่อรายวัน (แปลงเป็น ${Math.round(semHours)} ชม.)`}`).join(' · ');
@@ -2247,7 +2304,7 @@
         mode: 'mixed', note: describe, first: parts[0].first, last: parts[parts.length - 1].last,
         schoolDays: parts.reduce((sum, part) => sum + number(part.schoolDays, 0), 0),
         taughtHours: Math.round(parts.reduce((sum, part) => sum + (part.mode === 'hourly' ? number(part.taughtHours, 0) : semHours), 0)),
-        hours, students: list,
+        hours, fullHours: hours, students: list,
         over: list.filter((row) => row.pct !== null && !row.below).length,
         under: list.filter((row) => row.below).length,
         noData: list.filter((row) => row.pct === null).length
@@ -2317,10 +2374,54 @@
       return { ...studentInfo(student, index), scores, level: avg === null ? '' : avg >= 2.5 ? 3 : avg >= 2.0 ? 2 : avg >= 1.0 ? 1 : 0 };
     });
 
+    // ผลประเมินของครูผู้สอนวิชานี้เอง (SQL 034, owner 2026-10-15 "ให้ครูประจำวิชาประเมิน…ในวิชาตัวเอง"):
+    // subj_char / subj_rtw ของวิชา — ค่าของแต่ละข้อ = เฉลี่ยภาคที่มีผล · ไม่มีผลของวิชา = ใช้ผลรวม/กลุ่มสาระเหมือนเดิม
+    const subjectOwn = async (subjectId) => {
+      let rows = [];
+      try {
+        rows = await optionalTableAll('assessments', (query) => query.in('assessment_type', ['subj_char', 'subj_rtw'])
+          .eq('academic_year', academicYear).in('student_id', studentIds).like('criteria_code', `${subjectId}|%`));
+      } catch (_) { rows = []; }
+      const pick = (type, prefix, count) => {
+        const sums = new Map();
+        rows.filter((r) => r.assessment_type === type && text(r.criteria_code).split('|')[0] === text(subjectId)).forEach((r) => {
+          const code = text(r.criteria_code).split('|')[1] || '';
+          const index = Number(code.slice(prefix.length)) - 1;
+          if (!code.startsWith(prefix) || !(index >= 0 && index < count)) return;
+          const sid = text(r.student_id);
+          if (!sums.has(sid)) sums.set(sid, Array.from({ length: count }, () => []));
+          sums.get(sid)[index].push(Number(r.score));
+        });
+        const out = new Map();
+        sums.forEach((items, sid) => out.set(sid, items.map((v) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : ''))));
+        return out.size ? out : null;
+      };
+      return { char: pick('subj_char', 'c', 8), rtw: pick('subj_rtw', 'rtw', 5) };
+    };
+    const levelOf = (avg) => (avg === null ? '' : avg >= 2.5 ? 3 : avg >= 2.0 ? 2 : avg >= 1.0 ? 1 : 0);
+    const completeAvg = (scores, count) => {
+      const valid = (scores || []).filter((v) => v !== '' && v !== null && v !== undefined && !isNaN(Number(v))).map(Number);
+      return valid.length === count ? valid.reduce((a, b) => a + b, 0) / count : null;
+    };
+
+    const ownCharacter = (map) => {
+      const counts = { '3': 0, '2': 0, '1': 0, '0': 0, pending: 0 };
+      students.forEach((student) => {
+        const level = levelOf(completeAvg(map.get(text(student.id)), 8));
+        if (level === '') counts.pending++; else counts[String(level)]++;
+      });
+      return counts;
+    };
+    const ownCharacterBook = (map) => students.map((student, index) => {
+      const scores = (map.get(text(student.id)) || Array(8).fill('')).map((v) => (v === '' ? '' : Math.round(Number(v) * 100) / 100));
+      return { ...studentInfo(student, index), scores, level: levelOf(completeAvg(scores, 8)) };
+    });
+
     const sheets = [];
     for (const item of chosen) {
       const subject = details.get(text(item.id)) || item;
       const group = pp5SubjectGroup(subject);
+      const own = await subjectOwn(item.id);
       const grades = { '4': 0, '3.5': 0, '3': 0, '2.5': 0, '2': 0, '1.5': 0, '1': 0, '0': 0, 'ร': 0, 'มส': 0, pending: 0 };
       const rows = await scoreRowsForSubject(item.id, academicYear, studentIds);
       const rowMap = {};
@@ -2331,7 +2432,12 @@
         else grades.pending++;
       });
       const reading = { '3': 0, '2': 0, '1': 0, '0': 0, pending: 0 };
-      if (group) {
+      if (own.rtw) {
+        students.forEach((student) => {
+          const level = levelOf(completeAvg(own.rtw.get(text(student.id)), 5));
+          if (level === '') reading.pending++; else reading[String(level)]++;
+        });
+      } else if (group) {
         assessed.rtw.students.forEach((s) => {
           const v = s.scores?.[group.key];
           if (v === '' || v === null || v === undefined || isNaN(Number(v))) reading.pending++;
@@ -2349,9 +2455,14 @@
         semester: subjectSemester_(subject) || 0,
         teacher: cleanTeacherName(overrides[text(item.id)]) || cleanTeacherName(roomTeachers[roomTeacherKey(grade, classNo, item.id)])
           || text(subject.teacher_name || subject.teacherName),
-        grades, reading, character,
+        grades, reading, character: own.char ? ownCharacter(own.char) : character,
+        readingBy: own.rtw ? 'subject' : 'group', characterBy: own.char ? 'subject' : 'homeroom',
         attendance: await subjectAttendance(subject),
-        book: { scores: scoreBookFor(subject, rowMap), rtw: rtwBookFor(group), character: characterBook }
+        book: {
+          scores: scoreBookFor(subject, rowMap),
+          rtw: own.rtw ? students.map((student, index) => ({ ...studentInfo(student, index), score: levelOf(completeAvg(own.rtw.get(text(student.id)), 5)) })) : rtwBookFor(group),
+          character: own.char ? ownCharacterBook(own.char) : characterBook
+        }
       });
     }
     return { academicYear, studentCount, sheets };
@@ -2371,6 +2482,32 @@
     if (!Object.values(parts).some(Boolean)) throw new Error('เลือกอย่างน้อย 1 ส่วนที่จะพิมพ์');
     const result = await global.PP5PDF.createPp5SubjectCover({ grade, classNo, schoolAddress: text(settings.schoolAddress || settings.school_address), includeMonthly, parts, ...report }, options);
     return typeof result === 'object' && result?.blobUrl ? result.blobUrl : (typeof result === 'object' && result?.dataUri ? result.dataUri : result);
+  }
+
+  // นักเรียนเสี่ยง มส. ของห้อง (owner 2026-10-16 "รายชื่อนักเรียน มส. ให้ครูประจำชั้น"): เวลาเรียนทุกวิชาของห้อง
+  // คิดชุดเดียวกับ ปพ.5 แบบรายวิชา (subjectAttendance: รายคาบ / รายวัน / ผสมรายภาค) — หน้า js/attendance-risk.js จัดกลุ่ม มส.
+  async function roomAttendanceRisk(grade, classNo) {
+    const students = await data.students.list({ grade, room: classNo });
+    const print = await attendancePrintOptions(grade, classNo, 'นักเรียนที่เวลาเรียนรายวิชาไม่ถึงเกณฑ์');
+    const base = {
+      grade, classNo, academicYear: print.academicYear, print,
+      students: students.map((student, index) => ({ code: text(student.id), no: text(student.studentNumber ?? student.student_number) || String(index + 1), name: studentDisplayName(student) }))
+    };
+    if (!students.length) return { ...base, subjects: [] };
+    let report;
+    try { report = await computePp5SubjectSheets(grade, classNo, students, 'all', print.academicYear); }
+    catch (error) { if (/ไม่พบรายวิชา/.test(error.message)) return { ...base, subjects: [] }; throw error; }
+    return {
+      ...base,
+      subjects: report.sheets.map((sheet) => ({
+        id: sheet.id, code: sheet.code, name: sheet.name, semester: sheet.semester, hours: sheet.hours,
+        mode: text(sheet.attendance?.mode), note: text(sheet.attendance?.note),
+        taughtHours: sheet.attendance?.taughtHours ?? null, schoolDays: sheet.attendance?.schoolDays ?? null,
+        fullHours: Number(sheet.attendance?.fullHours) || 0,
+        rows: (sheet.attendance?.students || []).map((row) => ({ code: row.code, present: row.present, leave: row.leave, absent: row.absent,
+          total: row.total, absentHours: row.absentHours ?? null, pct: row.pct }))
+      }))
+    };
   }
 
   async function listPp5CoverSubjects(grade) {
@@ -8417,6 +8554,7 @@
     async exportPp5SubjectBookPDF(grade, classNo, subjectId, teacherOverrides, printOptions) { return generatePp5SubjectCoverPdf(grade, classNo, subjectId, teacherOverrides, printOptions); },
     async getPp5CoverSubjects(grade) { return listPp5CoverSubjects(grade); },
     async getPp5SubjectRoomTeachers(grade, classNo) { return listPp5SubjectRoomTeachers(grade, classNo); },
+    async getRoomAttendanceRisk(grade, classNo) { return roomAttendanceRisk(grade, classNo); },
     async savePp5SubjectRoomTeachers(grade, classNo, teachers) { return savePp5SubjectRoomTeachers(grade, classNo, teachers); },
     async exportPp5FullBookPDF(grade, classNo, academicYear) { return generatePp5FullBookPdf(grade, classNo, null, academicYear); },
     async exportPp5FullBookSheets(grade, classNo, parts) { return generatePp5FullBookPdf(grade, classNo, parts); },
