@@ -1115,11 +1115,13 @@ function enhanceSupabaseScoreEntryPage_() {
     const totalCell = row.querySelector('.score-entry-total');
     const gradeCell = row.querySelector('.score-entry-grade');
     if (!totalCell || !gradeCell) return;
-    const grade = gradeFor(totalCell.textContent);
+    const hasScore = [...row.querySelectorAll('.score-entry-input, .score-entry-final-input')]
+      .some(input => String(input.value ?? '').trim() !== '');
+    const grade = hasScore ? gradeFor(totalCell.textContent) : '—';
     const badge = gradeCell.querySelector('.score-entry-grade-badge') || document.createElement('span');
     if (!badge.parentElement) gradeCell.appendChild(badge);
     badge.textContent = grade;
-    badge.className = `score-entry-grade-badge score-entry-grade-${grade.replace('.', '-')}`;
+    badge.className = `score-entry-grade-badge score-entry-grade-${hasScore ? grade.replace('.', '-') : 'pending'}`;
   };
 
   const syncTermGrades = function(container) {
@@ -1128,12 +1130,13 @@ function enhanceSupabaseScoreEntryPage_() {
 
 
   const updateStats = function(tabId) {
+    if (typeof system.updateStats === 'function') { system.updateStats(tabId); return; }
     const totalEl = frame.querySelector('#totalStudents');
     const completedEl = frame.querySelector('#completedScores');
-    const averageEl = frame.querySelector('#averageScore');
+    const averageEl = frame.querySelector('#avgScore');
     const passEl = frame.querySelector('#passRate');
-    const grade4El = frame.querySelector('#grade4');
-    const below2El = frame.querySelector('#gradeBelow2');
+    const grade4El = frame.querySelector('#grade4count');
+    const below2El = frame.querySelector('#gradeBelow2Count');
     const progressEl = frame.querySelector('#scoreEntryProgressBar');
     const containerId = tabId === 'scoreEntryTerm2Tab'
       ? 'scoreEntryTerm2Container'
@@ -1876,6 +1879,7 @@ function enhanceSupabaseScoreEntryPage_() {
     table.setAttribute('data-round-labels', JSON.stringify(labels));
     const chip = table.querySelector(`.score-round-label[data-round-index="${index}"]`);
     if (chip) paintRoundLabel_(chip, label, index);
+    system.markDirty?.(container.id === 'scoreEntryTerm2Container' ? 'term2' : 'term1');
   };
 
   const openRoundLabelEditor_ = function(container, table, chip, index) {
@@ -2707,7 +2711,11 @@ function enhanceSupabaseSubjectManagerPage_() {
   input.dataset.pp5SubjectWorkbook = '1';
   const button = [...document.querySelectorAll('#contentFrame button')]
     .find((item) => (item.getAttribute('onclick') || '').includes('csvFileInput'));
-  if (button) button.textContent = '📥 นำเข้า CSV/Excel';
+  if (button) {
+    const label = button.querySelector('.subject-action-full');
+    if (label) label.textContent = '📥 นำเข้า CSV/Excel';
+    else button.textContent = '📥 นำเข้า CSV/Excel';
+  }
   if (window.__pp5SubjectWorkbookListener) return;
   window.__pp5SubjectWorkbookListener = true;
   // Capture phase on document runs before the input's own onchange, so an Excel file never
