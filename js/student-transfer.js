@@ -583,8 +583,11 @@ ${list.map((c) => certificateSheet(c, school)).join('\n')}
   }
 
   async function mount(root) {
+    const role = String(global.localStorage?.getItem('role') || '').toLowerCase();
     const state = {
-      isAdmin: String(global.localStorage?.getItem('role') || '').toLowerCase() === 'admin',
+      // เจ้าหน้าที่ธุรการ (registrar, SQL 036) ใช้หน้านี้ได้ทั้งหมด ยกเว้นปุ่ม "ยืนยันย้ายออก" (owner 2026-10-18: ผู้ดูแลระบบกดเท่านั้น)
+      isAdmin: role === 'admin',
+      canUse: role === 'admin' || role === 'registrar',
       year: '', school: {}, students: [], transfers: [], tab: 'new', editing: null, selected: new Set(), details: new Map(),
       grade: '', room: ''
     };
@@ -598,7 +601,7 @@ ${list.map((c) => certificateSheet(c, school)).join('\n')}
         box.innerHTML = text || '';
       });
     };
-    if (!state.isAdmin) { body.innerHTML = '<div class="pp5-tr-hint">เมนูนี้สำหรับผู้ดูแลระบบ (งานทะเบียน)</div>'; return; }
+    if (!state.canUse) { body.innerHTML = '<div class="pp5-tr-hint">เมนูนี้สำหรับผู้ดูแลระบบและเจ้าหน้าที่ธุรการ (งานทะเบียน)</div>'; return; }
 
     const settings = await global.PP5Data.settings.get();
     state.year = String(settings.academicYear || settings.academic_year || '');
@@ -1045,12 +1048,13 @@ ${editing ? `<div class="pp5-tr-msg info">กำลังแก้ไขเร�
     <button type="button" class="btn btn-sm btn-outline-primary" data-docx-row aria-label="ดาวน์โหลดไฟล์ Word"><i class="bi bi-file-earmark-word"></i> Word</button>
     <button type="button" class="btn btn-sm btn-outline-primary" data-cert-row><i class="bi bi-card-checklist"></i> ใบรับรอง</button>
     ${open ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-edit>แก้ไข</button>
-    <button type="button" class="btn btn-sm btn-success" data-confirm>ยืนยันย้ายออก</button>
+    ${state.isAdmin ? '<button type="button" class="btn btn-sm btn-success" data-confirm>ยืนยันย้ายออก</button>' : '<span class="pp5-tr-hint" style="margin:0" data-await-admin>รอผู้ดูแลระบบยืนยันย้ายออก</span>'}
     <button type="button" class="btn btn-sm btn-outline-danger" data-cancel>ยกเลิกเรื่อง</button>` : ''}
+    ${state.isAdmin ? '<button type="button" class="btn btn-sm btn-outline-danger" data-delete aria-label="ลบเรื่องย้ายนี้ออกจากประวัติ"><i class="bi bi-trash"></i> ลบ</button>' : ''}
   </div></td></tr>`;
       }).join('');
-      body.innerHTML = `<p class="pp5-tr-hint" style="margin-top:0">"ยืนยันย้ายออก" เมื่อการย้ายเสร็จแล้ว (เช่น เขตพื้นที่อนุญาตหรือโรงเรียนใหม่รับแล้ว): นักเรียนจะออกจากรายชื่อห้อง
-ส่วนผลการเรียน เวลาเรียน และประวัติทั้งหมดยังเก็บไว้</p>
+      body.innerHTML = `<p class="pp5-tr-hint" style="margin-top:0">${state.isAdmin ? '' : 'เจ้าหน้าที่ธุรการบันทึก แก้ไข พิมพ์ และยกเลิกเรื่องได้ ผู้ดูแลระบบเป็นผู้กด '}"ยืนยันย้ายออก" เมื่อการย้ายเสร็จแล้ว (เช่น เขตพื้นที่อนุญาตหรือโรงเรียนใหม่รับแล้ว): นักเรียนจะออกจากรายชื่อห้อง
+ส่วนผลการเรียน เวลาเรียน และประวัติทั้งหมดยังเก็บไว้${state.isAdmin ? ' · ปุ่ม "ลบ" (เฉพาะผู้ดูแลระบบ) ลบเรื่องย้ายออกจากประวัติถาวร ไม่เปลี่ยนสถานะนักเรียน' : ''}</p>
 <div style="overflow-x:auto"><table><thead><tr><th>วันที่</th><th>นักเรียน</th><th class="pp5-tr-hide-sm">ย้ายไป</th><th class="pp5-tr-hide-sm">เลขที่หนังสือ</th><th>สถานะ</th><th></th></tr></thead>
 <tbody>${rows || '<tr><td colspan="6" class="pp5-tr-hint">ยังไม่มีเรื่องย้าย</td></tr>'}</tbody></table></div>`;
       body.querySelectorAll('tr[data-id]').forEach((tr) => {
@@ -1083,6 +1087,14 @@ ${editing ? `<div class="pp5-tr-msg info">กำลังแก้ไขเร�
           const { error } = await client().from('student_transfers').update({ status: 'cancelled' }).eq('id', t.id);
           if (error) throw error;
           say(`ยกเลิกเรื่องย้ายของ ${esc(fullName(t.student_snapshot))} แล้ว นักเรียนยังอยู่ในห้องเดิม`, 'info');
+        });
+        // ลบออกจากประวัติ (owner 2026-10-19): ผู้ดูแลระบบเท่านั้น — RLS student_transfers_admin_all อนุญาต delete เฉพาะ admin
+        // (เจ้าหน้าที่ธุรการไม่มีนโยบาย delete) ถ้าฐานข้อมูลไม่ลบให้ จะได้ 0 แถวโดยไม่มี error จึงตรวจจำนวนแถวที่ลบด้วย
+        twoStep(tr.querySelector('[data-delete]'), 'กดอีกครั้งเพื่อลบ', async () => {
+          const { data, error } = await client().from('student_transfers').delete().eq('id', t.id).select('id');
+          if (error) throw error;
+          if (!data || !data.length) throw new Error('ลบไม่สำเร็จ: ต้องเป็นผู้ดูแลระบบ');
+          say(`ลบเรื่องย้ายของ ${esc(fullName(t.student_snapshot))} ออกจากประวัติแล้ว${t.status === 'transferred' ? ' (นักเรียนยังเป็นสถานะจำหน่ายเหมือนเดิม)' : ''}`, 'info');
         });
       });
     }
