@@ -3397,18 +3397,24 @@ function enhanceSupabaseSettingsPage_() {
     supervisor.parentElement.appendChild(jumpBtn);
   }
 
-  const logoLabel = document.querySelector('label[for="logoFileId"]');
-  if (logoLabel) logoLabel.textContent = 'โลโก้โรงเรียน (URL หรือ Google Drive File ID)';
-  const logoInput = document.getElementById('logoFileId');
-  if (logoInput) logoInput.placeholder = 'วาง URL หรือ File ID ของรูปโลโก้';
+  // แท็บ "การพิมพ์และ PDF" (owner 2026-10-19): ซ่อนช่อง "รหัสโลโก้ Google Drive" และ "รหัสโฟลเดอร์ PDF" (ระบบ Apps Script เดิม)
+  // โลโก้จัดการที่เมนูโลโก้และตราโรงเรียนที่เดียว (js/logo-manager.js เก็บรูปในฐานข้อมูล และเตือนถ้ายังดึงจาก Google Drive)
+  // owner: แถวโลโก้ + ปุ่มเปลี่ยนโลโก้ในแท็บนี้ "ซ้ำซ้อน รก" จึงไม่แสดงอะไรแทน
+  // ช่องเดิมยังอยู่แต่ซ่อน — #logoFileId ว่างเสมอ (ดู populateForm ด้านล่าง) ปุ่มบันทึกของหน้านี้จึงไม่เขียนทับโลโก้
+  const mediaPanel = document.querySelector('#printingTabPane .media-panel');
+  if (mediaPanel && !mediaPanel.hidden) {
+    mediaPanel.hidden = true;
+    mediaPanel.style.display = 'none';
+    const subtitle = document.querySelector('#printingTabPane .card-subtitle');
+    if (subtitle) subtitle.textContent = 'ลายน้ำบนเอกสารที่ระบบสร้าง · PDF ดาวน์โหลดลงเครื่องโดยตรง';
+    const hiddenLogoInput = document.getElementById('logoFileId');
+    if (hiddenLogoInput) hiddenLogoInput.value = '';
+  }
 
   const folder = document.getElementById('pdfSaveFolderId');
   if (folder) {
     folder.value = '';
     folder.disabled = true;
-    folder.placeholder = 'ดาวน์โหลด PDF ผ่านเบราว์เซอร์';
-    const help = folder.parentElement?.querySelector('.field-help');
-    if (help) help.textContent = 'เวอร์ชัน Supabase ดาวน์โหลด PDF ลงเครื่องโดยตรง การบันทึกอัตโนมัติจะเปิดใช้เมื่อเชื่อม Supabase Storage';
   }
 
   const yearInput = document.getElementById('newAcademicYear');
@@ -3452,6 +3458,10 @@ function enhanceSupabaseSettingsPage_() {
         pdfFolder.value = '';
         pdfFolder.disabled = true;
       }
+      // โลโก้จัดการที่หน้าโลโก้และตราโรงเรียนเท่านั้น: ช่องที่ซ่อนว่างไว้ = บันทึกหน้านี้แล้วโลโก้เดิมไม่เปลี่ยน
+      // (supabaseClient settings.save และ gas-bridge saveSettings ข้ามค่าโลโก้ที่ว่าง)
+      const hiddenLogo = document.getElementById('logoFileId');
+      if (hiddenLogo && document.querySelector('#printingTabPane .media-panel')?.hidden) hiddenLogo.value = '';
       const summary = document.getElementById('summaryPdfFolder');
       if (summary) summary.textContent = 'ดาวน์โหลดผ่านเบราว์เซอร์';
     };
