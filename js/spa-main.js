@@ -4822,14 +4822,16 @@ function handleSearch(query) {
   
   sidebar?.classList.add('searching');
   menuGroups.forEach(group => {
-    const headerText = String(group.querySelector('.menu-header')?.textContent || '').toLowerCase();
+    // data-aliases = ชื่อเดิมของหมวด/เมนูก่อนปรับเมนู (owner 2026-10-20) ครูพิมพ์คำเดิมก็ยังเจอ
+    const header = group.querySelector('.menu-header');
+    const headerText = String((header?.textContent || '') + ' ' + (header?.dataset?.aliases || '')).toLowerCase();
     const headerMatches = headerText.includes(query);
     const items = group.querySelectorAll('.nav-item');
     let hasVisible = headerMatches && items.length === 0;
     items.forEach(item => {
       const link = item.querySelector('.nav-link');
       const raw = link?.querySelector('.nav-label')?.dataset?.rawLabel || link?.textContent || '';
-      const text = String(raw).toLowerCase();
+      const text = String(raw + ' ' + (item.dataset?.aliases || '')).toLowerCase();
       const match = headerMatches || text.includes(query);
       item.style.display = match ? 'block' : 'none';
       if (match) hasVisible = true;
@@ -6452,6 +6454,8 @@ function enhanceSupabaseParentPortalPage_() {
   // LINE notifications (js/line-notify.js): parents link/unlink, admin announces results.
   // Hidden until the line-notify Edge Function reports LINE as configured.
   window.PP5Line?.enhanceParentPortal?.(frame)?.catch?.(() => {});
+  // ครู/ผู้ดูแลเปิดหน้านี้ (owner 2026-10-20): หัวหน้าแถวเดียว + แท็บ ดูแบบผู้ปกครอง | ส่งลิงก์ให้ผู้ปกครอง (js/parent-portal-staff.js)
+  try { window.PP5ParentPortalStaff?.apply?.(frame); } catch (err) { console.warn('parent portal staff layout failed', err); }
 
   const escapeParentText_ = (value) => {
     if (typeof window.esc === 'function') return window.esc(value);
