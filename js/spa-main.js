@@ -842,7 +842,7 @@ function enhanceUniversalGradeClassAutoSelect_(root) {
 // Parents get a results-only app: any other page (home_hub, teacher tools,
 // a bookmarked URL) opens the parent portal instead. RLS already limits the
 // data; this keeps the menus a parent sees to the pages meant for them.
-const PARENT_PAGES_ = ['parent_portal', 'change_password', 'help_page'];
+const PARENT_PAGES_ = ['parent_portal', 'change_password', 'help_page', 'my_profile'];
 function isParentSession_() {
   try { return String(localStorage.getItem('role') || '').toLowerCase() === 'parent'; } catch (_) { return false; }
 }
