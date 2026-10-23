@@ -124,6 +124,11 @@
 [data-theme="dark"] .sa{--sa-line:#2b3446;--sa-muted:#a7afbd;--sa-soft:#161d2b;--sa-card:#1b2232;--sa-text:#e5e7eb;
   --sa-ok:#6fe0b4;--sa-ok-bg:rgba(111,224,180,.12);--sa-warn:#ffc46b;--sa-warn-bg:rgba(255,196,107,.12);--sa-bad:#ff8a80;--sa-bad-bg:rgba(255,138,128,.12)}
 .sa-title{display:none}
+.sa-view{display:inline-flex;gap:4px;padding:4px;border-radius:14px;background:var(--sa-soft);border:1px solid var(--sa-line);margin-bottom:12px}
+.sa-view button{border:0;border-radius:10px;background:transparent;color:var(--sa-muted);font-weight:700;min-height:40px;padding:0 1.1rem;display:inline-flex;align-items:center;gap:8px}
+.sa-view button[aria-pressed="true"]{background:var(--sa-accent);color:#fff;box-shadow:0 4px 12px color-mix(in srgb,var(--sa-accent) 30%,transparent)}
+.sa-controls label i{color:var(--sa-accent);margin-right:4px}
+.sa.is-month{max-width:none}
 .sa-card{background:var(--sa-card);border:1px solid var(--sa-line);border-radius:14px;padding:14px 16px;margin-bottom:12px}
 .sa-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .sa-controls .sa-wide{grid-column:1/-1}
@@ -200,17 +205,19 @@
     return `<div class="sa" id="pp5SubjectAttendance"><style>${STYLE}</style>
 <h4 class="sa-title">เช็คชื่อรายวิชา (รายคาบ)</h4>
 <div class="sa-card">
+  <div class="sa-view" role="group" aria-label="มุมมอง"><button type="button" data-pp5-btn-skip data-view="day" aria-pressed="true"><i class="bi bi-calendar-day"></i> รายคาบ</button><button type="button" data-pp5-btn-skip data-view="month" aria-pressed="false"><i class="bi bi-calendar3"></i> รายเดือน</button></div>
   <div class="sa-controls">
-    <div><label for="saGrade">ชั้น</label><select id="saGrade" class="form-select"></select></div>
-    <div><label for="saRoom">ห้อง</label><select id="saRoom" class="form-select"></select></div>
-    <div class="sa-wide"><label for="saSubject">รายวิชา</label><select id="saSubject" class="form-select"></select></div>
-    <div><label for="saDate">วันที่สอน</label><input id="saDate" type="date" class="form-control"></div>
+    <div><label for="saGrade"><i class="bi bi-people"></i>ชั้น</label><select id="saGrade" class="form-select"></select></div>
+    <div><label for="saRoom"><i class="bi bi-door-open"></i>ห้อง</label><select id="saRoom" class="form-select"></select></div>
+    <div class="sa-wide"><label for="saSubject"><i class="bi bi-book"></i>รายวิชา</label><select id="saSubject" class="form-select"></select></div>
+    <div><label for="saDate"><i class="bi bi-calendar-event"></i>วันที่สอน</label><input id="saDate" type="date" class="form-control"></div>
   </div>
   <div class="sa-periods-row"><span class="sa-plabel">คาบที่</span><div class="sa-periods" data-periods role="group" aria-label="คาบที่"></div>
     <span class="sa-plan" data-plan></span></div>
 </div>
 <div class="sa-card sa-week" data-week hidden></div>
 <div class="sa-card" data-body><div class="sa-note">กำลังโหลด…</div></div>
+<div class="sa-card" data-month hidden></div>
 <div class="sa-bar" data-bar hidden>
   <span class="sa-say" data-say></span>
   <span class="d-inline-flex gap-2 align-items-center">
@@ -237,6 +244,13 @@
     const saveBtn = $('[data-save]');
     const clearBtn = $('[data-clear]');
     const historyBox = $('[data-history]');
+    const monthBox = $('[data-month]');
+    const periodsRow = $('.sa-periods-row');
+    // มุมมองรายเดือน (owner 2026-10-22 "ออกแบบตารางเช็คชื่อเป็นแบบรายเดือน ... เพิ่มขึ้นมาอีกหนึ่งทางเลือก") — js/subject-attendance-month.js
+    // จำมุมมองที่ครูเลือกไว้ในเครื่อง
+    let view = 'day';
+    try { view = global.localStorage.getItem('pp5SubjectAttendanceView') === 'month' ? 'month' : 'day'; } catch (_) { view = 'day'; }
+    let monthCtl = null;
     const state = { year: '', semester: 1, role: '', scope: null, period: 1, planned: 0, week: new Map(), weekOk: true,
       students: [], marks: new Map(), byPeriod: new Map(), fromDaily: new Map(), hasDaily: false, source: 'daily', from: 0,
       dirty: false, canWrite: true, token: 0 };
@@ -363,6 +377,8 @@ ${total ? `<div class="sa-days${weekend ? ' has-weekend' : ''}" aria-label="ว�
       if (!grade || !room || !subjectId) { periodBox.innerHTML = ''; weekBox.hidden = true; message('เลือกชั้น ห้อง และรายวิชา', ''); return; }
       if (!date) { message('เลือกวันที่สอน', ''); return; }
       state.canWrite = !state.writable || state.writable.has(subjectId);
+      showView();
+      if (view === 'month') { mountMonth(); return; }
       message('กำลังโหลดรายชื่อ…');
       try {
         const students = await global.PP5Data.students.list({ grade, room });
@@ -408,6 +424,30 @@ ${total ? `<div class="sa-days${weekend ? ' has-weekend' : ''}" aria-label="ว�
       }
     }
 
+    function showView() {
+      const month = view === 'month';
+      root.classList.toggle('is-month', month);
+      root.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === view)));
+      periodsRow.hidden = month;
+      monthBox.hidden = !month;
+      if (month) { weekBox.hidden = true; body.hidden = true; historyBox.hidden = true; clearBtn.hidden = true; }
+      else { body.hidden = false; saveBtn.hidden = false; saveBtn.disabled = false; monthCtl?.destroy(); monthCtl = null; monthBox.innerHTML = ''; }
+    }
+    function mountMonth() {
+      monthCtl?.destroy();
+      setSay('', '');
+      const M = global.PP5SubjectAttendanceMonth;
+      if (!M) { monthBox.innerHTML = '<div class="sa-note is-err">โหลดตารางรายเดือนไม่สำเร็จ — รีเฟรชหน้า</div>'; return; }
+      monthCtl = M.mount(monthBox, {
+        year: state.year, grade: gradeSel.value, room: roomSel.value, subjectId: subjectSel.value, canWrite: state.canWrite,
+        month: dateInput.value.slice(0, 7), todayIso: today(), bar, saveBtn, setSay,
+        openDay: (date) => { monthCtl?.destroy(); monthCtl = null; setView('day'); setDate(date); remember(); load(); }
+      });
+    }
+    function setView(next) {
+      view = next;
+      try { global.localStorage.setItem('pp5SubjectAttendanceView', next); } catch (_) { /* ไม่จำก็ได้ */ }
+    }
     function renderPeriods() {
       const savedMax = Math.max(0, ...[...state.byPeriod.keys()]);
       const count = Math.min(MAX_PERIODS, Math.max(state.planned, savedMax, state.period, 1));
@@ -542,7 +582,7 @@ ${state.canWrite ? '' : '<div class="sa-note is-warn mb-2">ดูได้อย
       const S = global.PP5SubjectSchedule;
       const range = S?.termRange?.(settings.settings_json, state.year, state.semester) || null;
       const late = range ? S.missedPeriods(state.week, recorded, range, holidays, today(), state.dailyDates) : null;
-      const dailyNote = late?.byDaily ? ` · ใช้เช็คชื่อรายวันแทน ${late.byDaily} คาบ (วันที่ยังไม่ได้เช็ครายคาบ)` : '';
+      const dailyNote = late?.byDaily ? ` · ใช้เช็คชื่อรายวันแทน ${late.byDaily} คาบ (คาบที่ยังไม่ได้เช็ครายคาบ)` : '';
       const lateHtml = !state.week.size ? ''
         : !range ? `<div class="sa-note mb-2"><i class="bi bi-info-circle"></i> ผู้ดูแลยังไม่ได้ตั้งวันเปิด–ปิดภาคเรียน (หน้าตั้งค่าระบบกลาง แท็บรูปแบบ ปพ.5) ระบบจึงยังนับคาบที่ค้างเช็คไม่ได้</div>`
           : late.notYet === 'ended' ? `<div class="sa-note mb-2"><i class="bi bi-calendar-check"></i> ภาคเรียนที่ ${state.semester} ไม่มีคาบต้องนับ — ภาคนี้ปิดวันที่ ${esc(thaiDate(range.end))} ก่อนวันเริ่มนับ ${esc(thaiDate(range.countFrom))} (ระบบเริ่มนับคาบค้างเช็คในภาคถัดไป)</div>`
@@ -559,10 +599,15 @@ ${list.map(([d, day]) => `<tr data-date="${esc(d)}"${d === current ? ' class="is
 </tbody></table><div class="small mt-1" style="color:var(--sa-muted)">มา/ลา/ขาด นับรวมทุกคาบ · กดที่วันที่เพื่อเปิดแก้ไข</div>` : '<div class="sa-note">ยังไม่มีการเช็คชื่อรายคาบของวิชานี้ — ปก ปพ.5 แบบรายวิชาจะคิดเวลาเรียนจากเช็คชื่อรายวันไปก่อน</div>'}`;
     }
 
-    const confirmLeave = () => !state.dirty || global.confirm('ยังไม่ได้บันทึกการเช็คชื่อที่แก้ไว้ ต้องการเปลี่ยนโดยไม่บันทึกใช่ไหม?');
+    const confirmLeave = () => !(state.dirty || monthCtl?.isDirty()) || global.confirm('ยังไม่ได้บันทึกการเช็คชื่อที่แก้ไว้ ต้องการเปลี่ยนโดยไม่บันทึกใช่ไหม?');
 
     // ---- events
     root.addEventListener('click', async (event) => {
+      const viewBtn = event.target.closest('[data-view]');
+      if (viewBtn) {
+        if (viewBtn.dataset.view !== view && confirmLeave()) { state.dirty = false; setView(viewBtn.dataset.view); load(); }
+        return;
+      }
       const periodBtn = event.target.closest('[data-period]');
       if (periodBtn) {
         if (Number(periodBtn.dataset.period) !== state.period && confirmLeave()) { state.period = Number(periodBtn.dataset.period); showPeriod(); }
@@ -628,7 +673,7 @@ ${list.map(([d, day]) => `<tr data-date="${esc(d)}"${d === current ? ' class="is
         clearBtn.disabled = false;
       }
     }
-    saveBtn.addEventListener('click', () => save(false));
+    saveBtn.addEventListener('click', () => (view === 'month' && monthCtl ? monthCtl.save() : save(false)));
     clearBtn.addEventListener('click', () => {
       if (global.confirm(`ลบการเช็คชื่อคาบ ${state.period} ของวันที่ ${thaiDate(dateInput.value)} ทั้งห้องใช่ไหม?`)) save(true);
     });

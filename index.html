@@ -392,6 +392,10 @@
       <li class="nav-item admin-only" data-page="teacher_editor"><a href="#" class="nav-link" data-page="teacher_editor"><i class="bi bi-person-video3"></i> ครูประจำชั้น</a></li>
       <li class="nav-item admin-only" data-page="teacher_access"><a href="#" class="nav-link" data-page="teacher_access"><i class="bi bi-person-check"></i> มอบหมายงานครู</a></li>
       <li class="nav-item admin-only" data-page="holiday_form"><a href="#" class="nav-link" data-page="holiday_form"><i class="bi bi-calendar-x"></i> จัดการวันหยุด</a></li>
+      <!-- owner 2026-10-23 "นำวิเคราะห์ sar ไปเพิ่มในเมนูงานวิชาการ" — เมนูเดิมใต้คะแนนและผลการเรียนยังอยู่ (ครูหาเจอที่เดิม) -->
+      <li class="nav-item admin-only" data-page="sar_analytics">
+        <a href="#" class="nav-link" data-page="sar_analytics" onclick="if (typeof showSarAnalyticsModal_ === 'function') { showSarAnalyticsModal_(); } else if (typeof window.showSarAnalyticsModal === 'function') { window.showSarAnalyticsModal(); } return false;"><i class="bi bi-file-earmark-bar-graph-fill text-success"></i> วิเคราะห์ผลสัมฤทธิ์ SAR</a>
+      </li>
     </ul>
 
     <ul class="menu-group admin-only" aria-label="ตั้งค่าระบบ">
@@ -450,7 +454,7 @@
   <!-- Direct PDF exporter with bundled Sarabun fonts -->
   <script src="vendor/jspdf.umd.min.js"></script>
   <script src="vendor/jspdf.plugin.autotable.min.js"></script>
-  <script src="js/pdf-export.js?v=63"></script>
+  <script src="js/pdf-export.js?v=70"></script>
   <script src="js/growth-nutrition.js?v=1"></script>
 
   <!-- ============ MAIN APP SCRIPT ============ -->
@@ -472,7 +476,7 @@
 <script src="js/dmc-import.js?v=1"></script>
 
 <!-- GAS Bridge (Maps google.script.run to Supabase) -->
-  <script src="js/gas-bridge.js?v=187"></script>
+  <script src="js/gas-bridge.js?v=193"></script>
   <script src="js/growth-export.js?v=5"></script>
 
 <!-- สำรองข้อมูล / เปิดไฟล์สำรอง / เตือนก่อนงานเสี่ยง (ต้องโหลดหลัง gas-bridge) -->
@@ -523,7 +527,7 @@
   <script src="js/semester-subjects.js?v=1"></script>
   <script src="js/teacher-permissions.js?v=21"></script>
   <!-- โหมดการทำงานของครู: ครูประจำชั้น / ครูประจำวิชา ตามงานที่ผู้ดูแลมอบหมาย -->
-  <script src="js/work-mode.js?v=11"></script>
+  <script src="js/work-mode.js?v=13"></script>
   <!-- เตือนในหน้ากรอกคะแนนเมื่อวิชามีครูผู้สอนคนอื่น (SQL 033) -->
   <script src="js/subject-teacher-notice.js?v=2"></script>
   <script src="js/install-guide.js?v=8"></script>
@@ -533,14 +537,15 @@
   <script src="js/self-register.js?v=1"></script>
   <script src="js/clubs.js?v=7"></script>
   <script src="js/student-transfer.js?v=17"></script>
-  <script src="js/my-profile.js?v=2"></script>
-  <script src="js/pp5-subject-cover.js?v=9"></script>
-  <script src="js/subject-attendance.js?v=11"></script>
-  <script src="js/subject-schedule.js?v=8"></script>
-  <script src="js/subject-attendance-summary.js?v=7"></script>
+  <script src="js/my-profile.js?v=3"></script>
+  <script src="js/pp5-subject-cover.js?v=11"></script>
+  <script src="js/subject-attendance.js?v=15"></script>
+  <script src="js/subject-attendance-month.js?v=6"></script>
+  <script src="js/subject-schedule.js?v=11"></script>
+  <script src="js/subject-attendance-summary.js?v=9"></script>
   <script src="js/subject-assessment.js?v=1"></script>
   <script src="js/attendance-risk.js?v=2"></script>
-  <script src="js/pp5-format.js?v=12"></script>
+  <script src="js/pp5-format.js?v=14"></script>
   <script src="js/menu-flyout.js?v=4"></script>
   <script src="js/settings-layout.js?v=3"></script>
   <script src="js/teacher-access-ui.js?v=4"></script>

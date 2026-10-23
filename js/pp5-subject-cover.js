@@ -25,6 +25,13 @@
     const style = doc.createElement('style');
     style.id = 'pp5SubjectCoverStyles';
     style.textContent = `
+.pp5sc-progress{width:min(460px,90vw);margin:0 auto;padding:18px 20px;border-radius:16px;background:rgba(15,23,42,.92);box-shadow:0 18px 40px rgba(0,0,0,.35);text-align:left;color:#fff}
+.pp5sc-progress-title{font-weight:700;font-size:1rem;line-height:1.4;margin-bottom:10px}
+.pp5sc-progress-top{display:flex;align-items:baseline;gap:10px;margin-bottom:6px}
+.pp5sc-progress-top b{font-size:1.6rem;font-variant-numeric:tabular-nums;min-width:3.2ch}
+.pp5sc-progress-top span{font-size:.92rem;opacity:.95}
+.pp5sc-progress-track{height:12px;border-radius:999px;background:rgba(255,255,255,.25);overflow:hidden}
+.pp5sc-progress-fill{height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#a78bfa,#34d399);transition:width .25s ease}
 .pp5sc{--sc-line:#e3e6ee;--sc-muted:#5b6275;--sc-soft:#f6f7fb;--sc-card:#fff;--sc-text:#1f2937;--sc-accent:var(--primary,#4f46e5);
   --sc-warn:#a15c00;--sc-warn-bg:#fff4e0;--sc-ok:#13795b;--sc-ok-bg:#e6f6ef;margin-bottom:1rem;color:var(--sc-text)}
 [data-theme="dark"] .pp5sc{--sc-line:#2b3446;--sc-muted:#a7afbd;--sc-soft:#161d2b;--sc-card:#1b2232;--sc-text:#e5e7eb;
@@ -70,7 +77,26 @@
 .pp5sc-state{font-size:.8rem}
 .pp5sc-state.is-ok{color:var(--sc-ok)} .pp5sc-state.is-err{color:#c2362b}
 .pp5sc-empty{padding:.8rem .85rem;font-size:.85rem;color:var(--sc-muted)}
-@media (max-width:520px){.pp5sc-row{grid-template-columns:1fr;gap:.3rem}.pp5sc-parts{grid-template-columns:1fr}}`;
+.card.pp5sc-wide{max-width:1180px!important;padding:1.4rem!important}
+.pp5sc-layout{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;align-items:start}
+.pp5sc-col{border:1px solid var(--sc-line);border-radius:16px;padding:18px;background:var(--sc-card)}
+.pp5sc-col>.mb-3,.pp5sc-col>.api-check{margin-top:0}
+.pp5sc-step{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.05rem;margin-bottom:14px}
+.pp5sc-step>span:first-child{width:30px;height:30px;border-radius:50%;background:var(--sc-accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:.92rem;flex:none}
+.pp5sc-step .pp5sc-all{margin-left:auto;display:inline-flex;gap:6px}
+.pp5sc-all button{border:1px solid var(--sc-line);background:var(--sc-card);color:var(--sc-text);border-radius:999px;font-size:.8rem;font-weight:600;padding:.2rem .7rem}
+.pp5sc-wide .pp5sc-parts{grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem}
+.pp5sc-wide .pp5sc-part{padding:.85rem .9rem;min-height:84px;align-items:center}
+.pp5sc-part .pp5sc-ico{flex:none;width:40px;height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:1.2rem;
+  background:color-mix(in srgb,var(--sc-accent) 10%,var(--sc-card));color:var(--sc-accent)}
+.pp5sc-part:has(input:checked) .pp5sc-ico{background:var(--sc-accent);color:#fff}
+.pp5sc-summary{display:flex;align-items:center;gap:8px;margin:14px 0 10px;padding:.6rem .8rem;border-radius:12px;background:var(--sc-soft);font-size:.9rem}
+.pp5sc-summary b{color:var(--sc-accent)}
+.pp5sc-wide #exportBtn{min-height:52px;font-size:1.05rem;border-radius:12px}
+.pp5sc-wide #status{margin-top:.8rem!important}
+@media (max-width:991px){.pp5sc-layout{grid-template-columns:1fr}}
+@media (max-width:520px){.pp5sc-row{grid-template-columns:1fr;gap:.3rem}.pp5sc-parts,.pp5sc-wide .pp5sc-parts{grid-template-columns:1fr}.pp5sc-col{padding:14px}
+  .pp5sc-step{flex-wrap:wrap}.pp5sc-step .pp5sc-all{margin-left:40px;width:100%}.card.pp5sc-wide{padding:.9rem!important}}`;
     doc.head.appendChild(style);
   }
 
@@ -107,27 +133,64 @@
     const box = doc.createElement('div');
     box.id = 'pp5SubjectBook';
     box.className = 'pp5sc';
-    box.innerHTML = `
+    // หน้ากว้าง 2 คอลัมน์ (owner 2026-10-23 "หน้า modal มันเล็กไปไหม จัดเรียงใหม่ให้ดูสวยงาม"): ซ้าย = 1 เลือกห้องและวิชา (+ ครูผู้สอน)
+    // ขวา = 2 เลือกส่วนที่จะพิมพ์ + สรุป + ปุ่มสร้าง · จอแคบเรียงเป็นคอลัมน์เดียว
+    box.innerHTML = `<div class="pp5sc-layout">
+<section class="pp5sc-col" data-col="setup"><div class="pp5sc-step"><span>1</span>เลือกห้องและรายวิชา</div>
   <div class="pp5sc-subject">
     <label for="pp5CoverSubject" class="pp5sc-label"><i class="bi bi-book"></i>รายวิชาที่จะพิมพ์</label>
     <select id="pp5CoverSubject" class="form-select"><option value="all">ทุกวิชาในห้องนี้ (วิชาละเล่ม ต่อกัน)</option></select>
   </div>
-  <div class="pp5sc-label mt-3"><i class="bi bi-journal-check"></i>ส่วนที่จะพิมพ์ในเล่ม</div>
+  <div id="pp5CoverTeachers"></div>
+</section>
+<section class="pp5sc-col" data-col="parts"><div class="pp5sc-step"><span>2</span>เลือกส่วนที่จะพิมพ์ในเล่ม
+  <span class="pp5sc-all"><button type="button" data-pp5-btn-skip data-parts-all="1">เลือกทั้งหมด</button><button type="button" data-pp5-btn-skip data-parts-all="0">ล้าง</button></span></div>
   <div class="pp5sc-parts">
-    <label class="pp5sc-part"><input type="checkbox" data-part="cover" checked><span><b>ปก + เวลาเรียน</b><small>แบบบันทึกผลการเรียนประจำรายวิชา · สรุปเวลาเรียนรายคน</small></span></label>
-    <label class="pp5sc-part"><input type="checkbox" data-part="monthly" checked><span><b>บันทึกเวลาเรียนรายเดือน</b><small>หน้าละเดือน ✓ ล ข ตามวันที่สอน (ต้องเลือกปก + เวลาเรียน)</small></span></label>
-    <label class="pp5sc-part"><input type="checkbox" data-part="scores" checked><span><b>บันทึกคะแนนรายครั้ง</b><small>ภาคละหน้า คะแนนครั้งที่ 1–9 ระหว่างภาค ปลายภาค เกรด + สรุปทั้งปี</small></span></label>
-    <label class="pp5sc-part"><input type="checkbox" data-part="rtw" checked><span><b>อ่าน คิดวิเคราะห์ และเขียน</b><small>ผลรายคนของกลุ่มสาระวิชานี้</small></span></label>
-    <label class="pp5sc-part"><input type="checkbox" data-part="character" checked><span><b>คุณลักษณะอันพึงประสงค์</b><small>8 ข้อ รายคน + สรุปผล</small></span></label>
+    <label class="pp5sc-part"><input type="checkbox" data-part="cover" checked><i class="bi bi-journal-richtext pp5sc-ico" aria-hidden="true"></i><span><b>ปก + เวลาเรียน</b><small>แบบบันทึกผลการเรียนประจำรายวิชา · สรุปเวลาเรียนรายคน</small></span></label>
+    <label class="pp5sc-part"><input type="checkbox" data-part="monthly" checked><i class="bi bi-calendar3 pp5sc-ico" aria-hidden="true"></i><span><b>บันทึกเวลาเรียนรายเดือน</b><small>หน้าละเดือน ✓ ล ข ตามวันที่สอน (ต้องเลือกปก + เวลาเรียน)</small></span></label>
+    <label class="pp5sc-part"><input type="checkbox" data-part="scores" checked><i class="bi bi-123 pp5sc-ico" aria-hidden="true"></i><span><b>บันทึกคะแนนรายครั้ง</b><small>ภาคละหน้า คะแนนครั้งที่ 1–9 ระหว่างภาค ปลายภาค เกรด + สรุปทั้งปี</small></span></label>
+    <label class="pp5sc-part"><input type="checkbox" data-part="rtw" checked><i class="bi bi-book-half pp5sc-ico" aria-hidden="true"></i><span><b>อ่าน คิดวิเคราะห์ และเขียน</b><small>ผลรายคนของกลุ่มสาระวิชานี้</small></span></label>
+    <label class="pp5sc-part"><input type="checkbox" data-part="character" checked><i class="bi bi-heart pp5sc-ico" aria-hidden="true"></i><span><b>คุณลักษณะอันพึงประสงค์</b><small>8 ข้อ รายคน + สรุปผล</small></span></label>
   </div>
-  <div id="pp5CoverTeachers"></div>`;
+  <div class="pp5sc-summary" data-summary></div>
+</section></div>`;
     const buttonRow = exportBtn.closest('.d-grid');
     if (buttonRow) buttonRow.before(box); else exportBtn.before(box);
+    card.classList.add('pp5sc-wide');
+    // ย้ายส่วนของแม่แบบเดิมเข้าคอลัมน์ (ตัวเดิม ตัวจัดการเหตุการณ์เดิมยังทำงาน): สถานะระบบ + ชั้น/ห้อง ไปซ้ายบน · ปุ่มสร้าง + ข้อความสถานะ ไปขวาล่าง
+    const setupCol = box.querySelector('[data-col="setup"]');
+    const partsCol = box.querySelector('[data-col="parts"]');
+    const setupStep = setupCol.querySelector('.pp5sc-step');
+    [frame.querySelector('#apiCheck'), gradeSelect.closest('.pp5sc-pair') || gradeSelect.closest('.mb-3')].filter(Boolean).reverse()
+      .forEach((el) => setupStep.after(el));
+    if (buttonRow) partsCol.append(buttonRow);
+    const statusBox = frame.querySelector('#status');
+    if (statusBox) partsCol.append(statusBox);
     const subjectSelect = box.querySelector('#pp5CoverSubject');
     const teacherBox = box.querySelector('#pp5CoverTeachers');
     const partBox = (name) => box.querySelector(`[data-part="${name}"]`);
     const syncMonthly = () => { partBox('monthly').disabled = !partBox('cover').checked; };
     partBox('cover').addEventListener('change', syncMonthly);
+    const PART_NAMES = { cover: 'ปก + เวลาเรียน', monthly: 'เวลาเรียนรายเดือน', scores: 'คะแนนรายครั้ง', rtw: 'อ่าน คิดวิเคราะห์ฯ', character: 'คุณลักษณะ' };
+    const summaryBox = box.querySelector('[data-summary]');
+    function updatePartSummary() {
+      const chosen = Object.keys(PART_NAMES).filter((name) => partBox(name).checked && !partBox(name).disabled);
+      const subjectText = (subjectSelect.value || 'all') === 'all' ? 'ทุกวิชาในห้อง' : (subjectSelect.options[subjectSelect.selectedIndex]?.textContent || '');
+      const room = gradeSelect.value && classSelect.value ? ` ห้อง ${esc(gradeSelect.value)}/${esc(classSelect.value)}` : '';
+      summaryBox.innerHTML = chosen.length
+        ? `<i class="bi bi-printer"></i><span>จะพิมพ์ <b>${chosen.length} ส่วน</b> · ${esc(subjectText)}${room}<br><small>${chosen.map((n) => PART_NAMES[n]).join(' · ')}</small></span>`
+        : '<i class="bi bi-exclamation-circle"></i><span>ยังไม่ได้เลือกส่วนที่จะพิมพ์</span>';
+    }
+    box.addEventListener('change', updatePartSummary);
+    box.addEventListener('click', (event) => {
+      const all = event.target.closest('[data-parts-all]');
+      if (!all) return;
+      Object.keys(PART_NAMES).forEach((name) => { partBox(name).checked = all.dataset.partsAll === '1'; });
+      syncMonthly();
+      updatePartSummary();
+    });
+    gradeSelect.addEventListener('change', updatePartSummary);
+    classSelect.addEventListener('change', updatePartSummary);
     const bookLabel = '<i class="bi bi-file-earmark-pdf me-2"></i>สร้าง PDF ปพ.5 แบบรายวิชา';
     exportBtn.innerHTML = bookLabel;
     let loadToken = 0;
@@ -205,6 +268,7 @@
     });
     teacherBox.addEventListener('input', updateTeacherSummary);
     subjectSelect.addEventListener('change', updateTeacherSummary);
+    updatePartSummary();
     gradeSelect.addEventListener('change', loadSubjects);
     classSelect.addEventListener('change', loadSubjects);
     loadSubjects();
@@ -229,17 +293,38 @@
       if (!Object.values(parts).some(Boolean)) { say('<i class="bi bi-exclamation-triangle me-1"></i>เลือกอย่างน้อย 1 ส่วนที่จะพิมพ์', 'warning'); return; }
       if (exportBtn.dataset.busy === '1') return;
       const all = (subjectSelect.value || 'all') === 'all';
-      const what = all ? `ทุกวิชา (${Math.max(0, subjectSelect.options.length - 1)} วิชา)` : subjectSelect.options[subjectSelect.selectedIndex]?.textContent || '';
+      const count = Math.max(0, subjectSelect.options.length - 1);
+      const what = all ? (count ? `ทุกวิชา (${count} วิชา)` : 'ทุกวิชา') : subjectSelect.options[subjectSelect.selectedIndex]?.textContent || '';
       const message = `กำลังสร้าง PDF ปพ.5 แบบรายวิชา ${what} ห้อง ${gradeSelect.value}/${classSelect.value} กรุณารอสักครู่…`;
       exportBtn.dataset.busy = '1';
       exportBtn.disabled = true;
-      exportBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>กำลังสร้าง…';
+      // แถบความคืบหน้า 0-100% แทนวงกลมหมุน (owner 2026-10-23 "ไม่อยากได้แบบสปินเนอร์ ขอเป็นแถบที่แสดงสถานะเปอร์เซ็นต์")
+      const spinner = overlay?.querySelector('.spinner-border');
+      if (spinner) spinner.hidden = true;
+      const bar = doc.createElement('div');
+      bar.className = 'pp5sc-progress';
+      bar.setAttribute('role', 'progressbar');
+      bar.setAttribute('aria-valuemin', '0');
+      bar.setAttribute('aria-valuemax', '100');
+      bar.innerHTML = `<div class="pp5sc-progress-title">${esc(message)}</div><div class="pp5sc-progress-top"><b data-pct>0%</b><span data-step>เริ่มต้น…</span></div><div class="pp5sc-progress-track"><div class="pp5sc-progress-fill" data-fill></div></div>`;
+      // การ์ดพื้นเข้มอ่านง่ายบนม่านโหลด · ข้อความเดิมของม่านซ่อนไว้ระหว่างสร้าง
+      if (overlayText) { overlayText.hidden = true; overlayText.after(bar); } else overlay?.appendChild(bar);
+      let shown = 0;
+      const progress = (pct, label) => {
+        shown = Math.max(shown, Math.min(100, Math.round(Number(pct) || 0)));
+        bar.setAttribute('aria-valuenow', String(shown));
+        bar.querySelector('[data-pct]').textContent = `${shown}%`;
+        bar.querySelector('[data-fill]').style.width = `${shown}%`;
+        if (label) bar.querySelector('[data-step]').textContent = label;
+        exportBtn.textContent = `กำลังสร้าง… ${shown}%`;
+      };
+      progress(0, 'เริ่มต้น…');
       if (overlayText) overlayText.textContent = message;
       if (overlay) overlay.style.display = 'flex';
       say(`<i class="bi bi-hourglass-split me-1"></i>${esc(message)}`);
       try {
         const url = await global.GasServer.exportPp5SubjectBookPDF(gradeSelect.value, classSelect.value, subjectSelect.value || 'all', teacherOverrides(),
-          { parts, monthly: partBox('monthly').checked });
+          { parts, monthly: partBox('monthly').checked, onProgress: progress });
         if (!url) throw new Error('ไม่ได้รับไฟล์ PDF');
         say(`<i class="bi bi-check-circle-fill me-1"></i>สร้าง PDF สำเร็จ · <a href="${esc(url)}" target="_blank" class="text-success fw-bold">คลิกเพื่อเปิดไฟล์ PDF</a>`, 'success');
         global.open(url, '_blank');
@@ -251,6 +336,9 @@
         exportBtn.innerHTML = bookLabel;
         if (overlay) overlay.style.display = 'none';
         if (overlayText && overlayOriginal) overlayText.textContent = overlayOriginal;
+        bar.remove();
+        if (spinner) spinner.hidden = false;
+        if (overlayText) overlayText.hidden = false;
       }
     }, true);
   }

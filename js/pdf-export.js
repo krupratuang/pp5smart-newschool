@@ -247,6 +247,17 @@
     doc.line(contentLeft, y, pageWidth - contentRight, y);
   }
 
+  // ลายเซ็นที่อัปโหลดไว้ (หน้าตั้งค่า) วางเหนือเส้น "ลงชื่อ" — เคารพสวิตช์ "ใช้ลายเซ็น" (includeSignatures) เหมือนปก ปพ.5
+  // owner 2026-10-23 "เมื่อเราตั้งใช้ลายเซ็นแล้ว ทำไมในใบผลการประเมินถึงไม่แสดงลายเซ็น"
+  function drawSignatureImage(doc, meta, image, centerX, lineY, width = 30) {
+    if (meta?.includeSignatures === false || !image) return;
+    try { doc.addImage(image, 'PNG', centerX - width / 2, lineY - 8.5, width, 9.5); } catch (_) { /* รูปเสียไม่ทำให้เอกสารพัง */ }
+  }
+  function drawSchoolStamp(doc, meta, centerX, lineY, size = 17) {
+    if (meta?.includeSignatures === false || !meta?.schoolStamp) return;
+    try { doc.addImage(meta.schoolStamp, 'PNG', centerX - size / 2, lineY - size + 3, size, size); } catch (_) { /* ignore */ }
+  }
+
   function addSignatures(doc, meta, startY) {
     let y = Math.max(number(startY, 230) + 14, 238);
     if (y > 262) {
@@ -2297,45 +2308,55 @@
 
   function drawPp5SubjectSheet(doc, report, sheet, meta, logo) {
     const pageWidth = doc.internal.pageSize.getWidth();
-    const left = 16;
-    const right = pageWidth - 16;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const left = 10;
     const blank = '...................................';
     doc.setTextColor(0, 0, 0);
+    // หัวกระดาษแบบเดียวกับปก ปพ.5 รายชั้น (drawPp5CoverPage): ตรากลาง ชื่อเอกสาร โรงเรียน สังกัด ปีการศึกษา ชั้น/ห้อง/จำนวนนักเรียน
+    let y = 12;
     if (logo) {
-      try { doc.addImage(logo, 'PNG', left, 9, 16, 16, undefined, 'FAST'); } catch (_) {}
+      try { doc.addImage(logo, 'PNG', (pageWidth - 22) / 2, y, 22, 22, undefined, 'FAST'); } catch (_) {}
+      y += 26;
+    } else {
+      y += 8;
     }
     doc.setFont('Sarabun', 'bold');
-    doc.setFontSize(15);
-    doc.text('แบบบันทึกผลการเรียนประจำรายวิชา', pageWidth / 2, 19, { align: 'center' });
-
-    // ช่องข้อมูล: ป้าย + ค่า + เส้นจุดถึงปลายช่อง
-    doc.setFontSize(11);
-    const field = (label, value, x, y, x2) => {
+    doc.setFontSize(14);
+    doc.text('แบบบันทึกผลการเรียนประจำรายวิชา', pageWidth / 2, y, { align: 'center' });
+    y += 6.5;
+    doc.setFontSize(12.5);
+    doc.text(meta.schoolName || 'โรงเรียน', pageWidth / 2, y, { align: 'center' });
+    y += 5.5;
+    if (text(meta.affiliation)) {
       doc.setFont('Sarabun', 'normal');
-      doc.text(label, x, y);
-      const start = x + doc.getTextWidth(label) + 2;
-      doc.setLineDashPattern([0.4, 0.8], 0);
-      doc.setLineWidth(0.2);
-      doc.line(start, y + 1.2, x2, y + 1.2);
-      doc.setLineDashPattern([], 0);
-      if (text(value)) doc.text(text(value), start + 2, y);
-    };
+      doc.setFontSize(9.5);
+      doc.text(text(meta.affiliation), pageWidth / 2, y, { align: 'center' });
+      y += 5.5;
+    }
+    doc.setFont('Sarabun', 'bold');
+    doc.setFontSize(11.5);
+    doc.text(`ปีการศึกษา ${text(report.academicYear)}`, pageWidth / 2, y, { align: 'center' });
+    y += 5.5;
+    doc.setFontSize(10.5);
+    doc.text(`ชั้น${pp5GradeFullName(report.grade)} ห้อง ${text(report.classNo)}   จำนวนนักเรียน ${number(report.studentCount, 0)} คน`, pageWidth / 2, y, { align: 'center' });
+    y += 3;
+
+    // ข้อมูลรายวิชาเป็นตาราง (ป้ายพื้นเทาเหมือนหัวตารางของปกรายชั้น)
     const hours = text(sheet.hours) ? `${text(sheet.hours)} ชั่วโมง/${sheet.semester ? 'ภาคเรียน' : 'ปี'}` : '';
-    let y = 34;
-    const step = 7.2;
-    const mid = left + (right - left) * 0.58;
-    field('โรงเรียน', meta.schoolName, left, y, right); y += step;
-    field('ที่ตั้ง', report.schoolAddress, left, y, right); y += step;
-    field('ชั้น', pp5GradeFullName(report.grade), left, y, left + 62);
-    field('ห้อง', text(report.classNo), left + 66, y, mid + 4);
-    field('ปีการศึกษา', report.academicYear, mid + 10, y, right); y += step;
-    field('รายวิชา', sheet.name, left, y, mid + 4);
-    field('รหัสวิชา', sheet.code, mid + 10, y, right); y += step;
-    field('กลุ่มสาระการเรียนรู้', sheet.group, left, y, right); y += step;
-    field('ประเภทวิชา', sheet.type, left, y, mid + 4);
-    field('เวลาเรียน', hours, mid + 10, y, right); y += step;
-    field('ครูผู้สอน', sheet.teacher, left, y, right); y += step;
-    field('ครูประจำชั้น', meta.classTeacher, left, y, right); y += 4;
+    const label = (content) => ({ content, styles: { fontStyle: 'bold', fillColor: [245, 245, 245] } });
+    runAutoTable(doc, tableDefaults({
+      startY: y,
+      body: [
+        [label('รายวิชา'), text(sheet.name), label('รหัสวิชา'), text(sheet.code)],
+        [label('กลุ่มสาระการเรียนรู้'), text(sheet.group), label('ประเภทวิชา'), text(sheet.type)],
+        [label('เวลาเรียน'), hours, label('ครูผู้สอน'), text(sheet.teacher) || blank],
+        [label('ครูประจำชั้น'), text(meta.classTeacher) || blank, label('ที่ตั้ง'), text(report.schoolAddress)]
+      ],
+      margin: { left, right: 10, bottom: 4 },
+      styles: { font: 'Sarabun', fontSize: 9.5, cellPadding: 1.8, halign: 'left', valign: 'middle', textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.2 },
+      columnStyles: { 0: { cellWidth: 32 }, 1: { cellWidth: 63 }, 2: { cellWidth: 24 }, 3: { cellWidth: 71 } }
+    }));
+    y = (doc.lastAutoTable?.finalY || y) + 2;
 
     const total = number(report.studentCount, 0);
     const pct = (n) => (total > 0 ? ((Number(n) || 0) / total * 100).toFixed(1) : '');
@@ -2345,12 +2366,12 @@
     const passGrades = ['4', '3.5', '3', '2.5', '2', '1.5', '1'].reduce((s, k) => s + (Number(g[k]) || 0), 0);
     const failGrades = ['0', 'ร', 'มส'].reduce((s, k) => s + (Number(g[k]) || 0), 0);
     const tableStyle = {
-      margin: { left, right: 16, bottom: 4 },
+      margin: { left, right: 10, bottom: 4 },
       styles: { font: 'Sarabun', fontSize: 9.5, cellPadding: 1.6, halign: 'center', valign: 'middle', textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.2 },
-      headStyles: { font: 'Sarabun', fontStyle: 'bold', fontSize: 9.5, fillColor: [255, 255, 255], textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.2 }
+      headStyles: { font: 'Sarabun', fontStyle: 'bold', fontSize: 9.5, fillColor: [245, 245, 245], textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.2 }
     };
     // ช่องผลการเรียน/ผลการประเมินกว้างเท่ากันทุกช่อง (ไม่ยืดตามความยาวข้อความ)
-    const cellWidth = (doc.internal.pageSize.getWidth() - left - 16 - 17) / 12;
+    const cellWidth = (doc.internal.pageSize.getWidth() - left - 10 - 17) / 12;
     const equalColumns = { 0: { cellWidth: 17 } };
     for (let i = 1; i <= 12; i += 1) equalColumns[i] = { cellWidth };
     runAutoTable(doc, tableDefaults({
@@ -2422,35 +2443,34 @@
       ? `* ${[sheet.characterBy === 'subject' ? 'คุณลักษณะ' : '', sheet.readingBy === 'subject' ? 'การอ่านฯ' : ''].filter(Boolean).join(' และ ')}ใช้ผลประเมินของครูผู้สอนวิชานี้ (ดีเยี่ยม = 3, ดี = 2, ผ่าน = 1, ไม่ผ่าน = 0)`
       : '* คุณลักษณะอันพึงประสงค์ใช้ผลการประเมินรวมของนักเรียน (ดีเยี่ยม = 3, ดี = 2, ผ่าน = 1, ไม่ผ่าน = 0)', left, noteY);
 
-    // ลงนาม: ครูผู้สอน | หัวหน้าฝ่ายวิชาการ/งานวัดผล  แล้วผู้อำนวยการ (อนุมัติ/ไม่อนุมัติ + วันที่)
+    // ลงนาม 3 ช่องแบบปกรายชั้น: ครูผู้สอน | หัวหน้าฝ่ายวิชาการ/งานวัดผล (เห็นควรอนุมัติ/ปรับปรุง) | ผู้อำนวยการ (อนุมัติ/ไม่อนุมัติ + ตรา)
     const signs = meta?.includeSignatures !== false;
-    const colL = pageWidth * 0.28;
-    const colR = pageWidth * 0.72;
-    let sy = Math.max(noteY + 22, 196);
+    const col1 = pageWidth * 0.2;
+    const col2 = pageWidth * 0.5;
+    const col3 = pageWidth * 0.8;
+    const sigY = Math.max(noteY + 36, pageHeight - 30);
     doc.setFont('Sarabun', 'normal');
-    doc.setFontSize(10.5);
-    doc.text('ลงชื่อ ..........................................', colL, sy, { align: 'center' });
-    doc.text(`( ${text(sheet.teacher) || blank} )`, colL, sy + 6.5, { align: 'center' });
-    doc.text('ครูผู้สอน', colL, sy + 13, { align: 'center' });
-    if (signs && meta?.academicHeadSignature) { try { doc.addImage(meta.academicHeadSignature, 'PNG', colR - 15, sy - 9, 30, 9.5); } catch (_) {} }
-    doc.text('ลงชื่อ ..........................................', colR, sy, { align: 'center' });
-    doc.text(`( ${text(meta.academicHead) || blank} )`, colR, sy + 6.5, { align: 'center' });
-    doc.text('หัวหน้าฝ่ายวิชาการ / งานวัดผล', colR, sy + 13, { align: 'center' });
-
-    sy += 27;
-    const cx = pageWidth / 2;
-    doc.text('อนุมัติ', cx - 17, sy, { align: 'right' });
-    doc.setLineWidth(0.25);
-    doc.rect(cx - 15, sy - 3.4, 4, 4);
-    doc.text('/ ไม่อนุมัติ', cx - 9, sy);
-    doc.rect(cx + 8, sy - 3.4, 4, 4);
-    sy += 12;
-    if (signs && meta?.schoolStamp) { try { doc.addImage(meta.schoolStamp, 'PNG', cx + 14, sy - 14, 17, 17); } catch (_) {} }
-    if (signs && meta?.directorSignature) { try { doc.addImage(meta.directorSignature, 'PNG', cx - 15, sy - 9, 30, 9.5); } catch (_) {} }
-    doc.text('ลงชื่อ ..........................................', cx, sy, { align: 'center' });
-    doc.text(`( ${text(meta.directorName) || blank} )`, cx, sy + 6.5, { align: 'center' });
-    doc.text(text(meta.directorPosition) || `ผู้อำนวยการ${meta.schoolName || 'โรงเรียน'}`, cx, sy + 13, { align: 'center' });
-    doc.text('วันที่ .......... เดือน ............................ พ.ศ. ..............', cx, sy + 20, { align: 'center' });
+    doc.setFontSize(9.5);
+    doc.setLineWidth(0.2);
+    doc.setDrawColor(0, 0, 0);
+    const box = (x, label, yy) => { doc.rect(x, yy - 3, 3, 3); doc.text(label, x + 5, yy); };
+    box(col2 - 30, 'เห็นควรอนุมัติ', sigY - 21);
+    box(col2 + 3, 'เห็นควรปรับปรุง', sigY - 21);
+    box(col3 - 23, 'อนุมัติ', sigY - 21);
+    box(col3 + 2, 'ไม่อนุมัติ', sigY - 21);
+    drawSignatureImage(doc, meta, sheet.teacherSignature, col1, sigY);
+    doc.text('ลงชื่อ................................................', col1, sigY, { align: 'center' });
+    doc.text(`( ${text(sheet.teacher) || blank} )`, col1, sigY + 6, { align: 'center' });
+    doc.text('ครูผู้สอน', col1, sigY + 11.5, { align: 'center' });
+    if (signs && meta?.academicHeadSignature) { try { doc.addImage(meta.academicHeadSignature, 'PNG', col2 - 15, sigY - 8.5, 30, 9.5); } catch (_) {} }
+    doc.text('ลงชื่อ................................................', col2, sigY, { align: 'center' });
+    doc.text(`( ${text(meta.academicHead) || blank} )`, col2, sigY + 6, { align: 'center' });
+    doc.text('หัวหน้าฝ่ายวิชาการ / งานวัดผล', col2, sigY + 11.5, { align: 'center' });
+    if (signs && meta?.schoolStamp) { try { doc.addImage(meta.schoolStamp, 'PNG', col3 - 8.5, sigY - 19, 17, 17); } catch (_) {} }
+    if (signs && meta?.directorSignature) { try { doc.addImage(meta.directorSignature, 'PNG', col3 - 15, sigY - 8.5, 30, 9.5); } catch (_) {} }
+    doc.text('ลงชื่อ................................................', col3, sigY, { align: 'center' });
+    doc.text(`( ${text(meta.directorName) || blank} )`, col3, sigY + 6, { align: 'center' });
+    doc.text(text(meta.directorPosition) || `ผู้อำนวยการ${meta.schoolName || 'โรงเรียน'}`, col3, sigY + 11.5, { align: 'center' });
   }
 
   // ข. หน้า "บันทึกเวลาเรียนรายวิชา" ต่อท้ายปกของแต่ละวิชา: รายชื่อนักเรียน วันมา/ลา/ขาด ร้อยละ ชั่วโมงที่เรียน และ มส
@@ -2507,6 +2527,7 @@
     const cx = pageWidth * 0.72;
     const sy = y + 24;
     doc.setFontSize(10.5);
+    drawSignatureImage(doc, meta, sheet.teacherSignature, cx, sy);
     doc.text('ลงชื่อ ..........................................', cx, sy, { align: 'center' });
     doc.text(`( ${text(sheet.teacher) || '...................................'} )`, cx, sy + 6.5, { align: 'center' });
     doc.text('ครูผู้สอน', cx, sy + 13, { align: 'center' });
@@ -2515,7 +2536,8 @@
   // บันทึกเวลาเรียนรายเดือนของวิชา (owner 2026-10-14 ส่งภาพบันทึกเวลาเรียนรายเดือน "มันต้องมีอย่างนี้ด้วย"): หน้าละเดือน
   // รูปแบบเดียวกับ drawDailyAttendancePage — คอลัมน์ = วันที่สอนวิชานั้น (รายชั่วโมงมีแถวจำนวนชั่วโมง) ✓ / ล / ข
   // ท้ายตารางมีรวมของเดือน (ชั่วโมงหรือวันที่มา / ที่สอน)
-  function drawPp5SubjectMonthPage(doc, report, sheet, month, meta, logo) {
+  // hourStart = ชั่วโมงที่สอนไปแล้วในเดือนก่อน ๆ ของปี (owner 2026-10-23 "อยากให้นับรวมทั้งปี") · คืนค่าชั่วโมงสุดท้ายของเดือนนี้
+  function drawPp5SubjectMonthPage(doc, report, sheet, month, meta, logo, hourStart = 0) {
     const att = sheet.attendance;
     // แต่ละเดือนบอกเองว่าเป็นรายคาบหรือรายวัน (วิชาทั้งปีแบบ mixed มีทั้งสองแบบในเล่มเดียว)
     const hourly = typeof month.hourly === 'boolean' ? month.hourly : att.mode === 'hourly';
@@ -2539,31 +2561,45 @@
     y += 4.5;
     doc.setFontSize(8.5);
     doc.text(hourly
-      ? `เช็คชื่อรายชั่วโมง: สอน ${month.days.length} ครั้ง รวม ${number(month.taught, 0)} ชั่วโมงในเดือนนี้`
+      ? `เช็คชื่อรายชั่วโมง: สอน ${month.days.length} ครั้ง รวม ${number(month.taught, 0)} ชั่วโมงในเดือนนี้${(month.days || []).length ? ` (ชั่วโมงที่ ${hourStart + 1}–${hourStart + (month.days || []).reduce((sum, d) => sum + Math.max(1, number(d.hours, 1)), 0)} ของปี)` : ''}`
       : `คิดจากเช็คชื่อรายวัน (ยังไม่มีการเช็คชื่อรายชั่วโมงของวิชานี้): เรียน ${month.days.length} วันในเดือนนี้`, pageWidth / 2, y, { align: 'center' });
     y += 3.5;
 
     const days = month.days || [];
     const unit = hourly ? 'ชม.' : 'วัน';
+    // หัวตาราง (owner 2026-10-23 "ทำให้ชื่อ นามสกุลแสดงในบรรทัดเดียว ปรับหัวตารางให้เป็นตัวไม่หนา"): วันที่เดียวกันหลายคาบรวมเป็นหัวเดียว
+    //   (เดิม "12-2" ในช่องแคบจึงตกบรรทัดเป็นแนวตั้ง) · แถว 2 = วัน · แถว 3 (รายชั่วโมง) = ชั่วโมงที่สอนช่องนั้น
+    const groupsByDate = [];
+    days.forEach((d) => { const g = groupsByDate[groupsByDate.length - 1]; const key = text(d.date) || text(d.label); if (g && g.key === key) g.n += 1; else groupsByDate.push({ key, d, n: 1 }); });
+    const dateLabel = (d) => text(d.label).split('-')[0];
+    const span = hourly ? 3 : 2;
     const headRow1 = [
-      { content: 'ที่', rowSpan: hourly ? 3 : 2 }, { content: 'รหัส', rowSpan: hourly ? 3 : 2 }, { content: 'ชื่อ - สกุล', rowSpan: hourly ? 3 : 2 },
-      ...days.map((d) => text(d.label)),
-      { content: `มา\n(${unit})`, rowSpan: hourly ? 3 : 2 }, { content: `${hourly ? 'สอน' : 'เรียน'}\n(${unit})`, rowSpan: hourly ? 3 : 2 }
+      { content: 'ที่', rowSpan: span }, { content: 'รหัส', rowSpan: span }, { content: 'ชื่อ - สกุล', rowSpan: span },
+      ...groupsByDate.map((g) => (g.n > 1 ? { content: dateLabel(g.d), colSpan: g.n } : dateLabel(g.d))),
+      { content: `มา\n(${unit})`, rowSpan: span }, { content: `${hourly ? 'สอน' : 'เรียน'}\n(${unit})`, rowSpan: span }
     ];
-    const head = [headRow1, days.map((d) => text(d.dow))];
-    if (hourly) head.push(days.map((d) => `${number(d.hours, 0)}`));
+    const head = [headRow1, groupsByDate.map((g) => (g.n > 1 ? { content: text(g.d.dow), colSpan: g.n } : text(g.d.dow)))];
+    // แถว 3 = ชั่วโมงที่ นับต่อกันทั้งปี (owner 2026-10-23 "นับเป็น ชม.ที่ 1 2 3 4" -> "อยากให้นับรวมทั้งปี"): เดือนนี้เริ่มต่อจากเดือนก่อน
+    //   ช่องที่สอนหลายชั่วโมงในแถวเดียว (ข้อมูลเก่าก่อน SQL 032) แสดงชั่วโมงสุดท้ายของช่องนั้น
+    let hourNo = hourStart;
+    if (hourly) head.push(days.map((d) => { hourNo += Math.max(1, number(d.hours, 1)); return String(hourNo); }));
     const body = month.students.map((st) => [st.no, st.code, st.name, ...st.cells, String(st.present), String(st.total)]);
-    // วันน้อยไม่ยืดช่องวันจนกว้างเกิน: ช่องวันกว้างไม่เกิน 9 มม. แล้ววางตารางกลางหน้า
-    const maxWidth = pageWidth - 20;
-    const numDays = Math.max(days.length, 1);
-    const nameWidth = Math.min(54, Math.max(36, maxWidth - 8 - 14 - 22 - numDays * 6.2));
-    const dayWidth = Math.min(9, (maxWidth - 8 - 14 - nameWidth - 22) / numDays);
-    const left = (pageWidth - (8 + 14 + nameWidth + 22 + dayWidth * numDays)) / 2;
-    const columnStyles = { 0: { cellWidth: 8 }, 1: { cellWidth: 14 }, 2: { cellWidth: nameWidth, halign: 'left' } };
-    days.forEach((_d, i) => { columnStyles[3 + i] = { cellWidth: dayWidth }; });
-    columnStyles[3 + days.length] = { cellWidth: 11 };
-    columnStyles[4 + days.length] = { cellWidth: 11 };
+    // ช่องชื่อกว้างพอให้ชื่อ-สกุลยาวที่สุดอยู่บรรทัดเดียว ช่องวันใช้ที่เหลือ (ไม่เกิน 9 มม. ไม่ต่ำกว่า 4.2 มม.)
     const small = days.length > 22 ? 7.5 : 8.5;
+    const maxWidth = pageWidth - 16;
+    const numDays = Math.max(days.length, 1);
+    const fixed = 7 + 12 + 20;
+    doc.setFont('Sarabun', 'normal');
+    doc.setFontSize(small);
+    const longest = Math.max(0, ...month.students.map((st) => doc.getTextWidth(text(st.name))));
+    let nameWidth = Math.min(64, Math.max(34, longest + 3));
+    let dayWidth = Math.min(9, (maxWidth - fixed - nameWidth) / numDays);
+    if (dayWidth < 4.2) { dayWidth = 4.2; nameWidth = Math.max(34, maxWidth - fixed - dayWidth * numDays); }
+    const left = (pageWidth - (fixed + nameWidth + dayWidth * numDays)) / 2;
+    const columnStyles = { 0: { cellWidth: 7 }, 1: { cellWidth: 12 }, 2: { cellWidth: nameWidth, halign: 'left' } };
+    days.forEach((_d, i) => { columnStyles[3 + i] = { cellWidth: dayWidth, cellPadding: { top: 1.1, bottom: 1.1, left: 0.2, right: 0.2 } }; });
+    columnStyles[3 + days.length] = { cellWidth: 10 };
+    columnStyles[4 + days.length] = { cellWidth: 10 };
     const isMark = (column) => column >= 3 && column < 3 + days.length;
     runAutoTable(doc, tableDefaults({
       startY: y,
@@ -2573,6 +2609,13 @@
       styles: { font: 'Sarabun', fontSize: small, cellPadding: 1.1, halign: 'center', valign: 'middle', textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.2 },
       headStyles: { font: 'Sarabun', fontStyle: 'bold', fontSize: small, fillColor: [245, 245, 245], textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.2 },
       columnStyles,
+      // หัวช่องวันที่/วัน/ชั่วโมงเป็นตัวปกติ (ช่องแคบ ตัวหนาล้น) · หัวอื่นยังตัวหนา · ชื่อ-สกุลไม่ตัดบรรทัด
+      didParseCell: (data) => {
+        if (data.section === 'head' && isMark(data.column.index)) { data.cell.styles.fontStyle = 'normal'; data.cell.styles.cellPadding = { top: 1, bottom: 1, left: 0.2, right: 0.2 }; }
+        // เลข 3 หลัก (ชั่วโมงที่ 100 ขึ้นไป) ย่อตัวให้อยู่ในช่องเดิม ตารางไม่ขยาย
+        if (data.section === 'head' && data.row.index === 2 && isMark(data.column.index) && String(data.cell.raw ?? '').length >= 3) data.cell.styles.fontSize = Math.min(small, 6);
+        if (data.section === 'body' && data.column.index === 2) data.cell.styles.overflow = 'ellipsize';
+      },
       willDrawCell: (data) => {
         if (data.section !== 'body' || !isMark(data.column.index)) return;
         const val = String(data.cell.raw || '').trim();
@@ -2595,7 +2638,7 @@
     doc.setFontSize(9);
     // Sarabun ไม่มีตัว ✓ จึงวาดเครื่องหมายถูกเป็นเส้นแบบเดียวกับในตาราง
     const prefix = 'หมายเหตุ: ';
-    const rest = `= มาเรียน   ล = ลา   ข = ขาด${hourly ? '   |   แถวที่ 3 ของหัวตาราง = ชั่วโมงที่สอนวันนั้น' : ''}   |   นักเรียน ${month.students.length} คน`;
+    const rest = `= มาเรียน   ล = ลา   ข = ขาด${hourly ? '   |   แถวที่ 3 ของหัวตาราง = ชั่วโมงที่ (นับต่อกันทั้งปี)' : ''}   |   นักเรียน ${month.students.length} คน`;
     const startX = pageWidth / 2 - (doc.getTextWidth(prefix) + 5 + doc.getTextWidth(rest)) / 2;
     doc.text(prefix, startX, endY);
     const cx = startX + doc.getTextWidth(prefix) + 2;
@@ -2604,6 +2647,7 @@
     doc.line(cx - 1.3, endY - 1.2, cx - 0.3, endY - 0.1);
     doc.line(cx - 0.3, endY - 0.1, cx + 1.5, endY - 2.5);
     doc.text(rest, startX + doc.getTextWidth(prefix) + 5, endY);
+    return hourNo;
   }
 
   // ---- เล่ม ปพ.5 รายวิชา (owner 2026-10-14: "พิมพ์ ปพ.5 รายวิชารวมเล่มด้วย เหมือนแบบรวมชั้น ไม่ใช่พิมพ์ได้แค่ปก")
@@ -2623,12 +2667,13 @@
     doc.text([meta.schoolName, sheet.teacher ? `ครูผู้สอน ${text(sheet.teacher)}` : '', extra].filter(Boolean).join(' · '), pageWidth / 2, 29, { align: 'center' });
     return 33;
   }
-  function subjectBookSignature(doc, sheet, y) {
+  function subjectBookSignature(doc, sheet, y, meta) {
     const pageWidth = doc.internal.pageSize.getWidth();
     let sy = y + 14;
     if (sy > doc.internal.pageSize.getHeight() - 24) { doc.addPage(); sy = 30; }
     doc.setFont('Sarabun', 'normal');
     doc.setFontSize(10.5);
+    drawSignatureImage(doc, meta, sheet.teacherSignature, pageWidth * 0.72, sy);
     doc.text('ลงชื่อ ..........................................', pageWidth * 0.72, sy, { align: 'center' });
     doc.text(`( ${text(sheet.teacher) || '...................................'} )`, pageWidth * 0.72, sy + 6.5, { align: 'center' });
     doc.text('ครูผู้สอน', pageWidth * 0.72, sy + 13, { align: 'center' });
@@ -2677,7 +2722,7 @@
       doc.text('* แถวที่ 2 ของหัวตาราง = ครั้งที่ · แถวที่ 3 = คะแนนเต็ม · ช่องว่าง = ยังไม่ได้บันทึกคะแนน', 12, noteY);
       const named = rounds.filter((r) => r.label);
       if (named.length) doc.text(`* ${named.map((r) => `ครั้งที่ ${r.i + 1} ${r.label}`).join(' · ')}`, 12, noteY + 4, { maxWidth: doc.internal.pageSize.getWidth() - 24 });
-      subjectBookSignature(doc, sheet, noteY + (named.length ? 8 : 0));
+      subjectBookSignature(doc, sheet, noteY + (named.length ? 8 : 0), meta);
     });
     if (book.semesters.length > 1) {
       newPage();
@@ -2690,7 +2735,7 @@
         body: book.year.map((row) => [row.no, row.code, row.name, ...row.totals.map(blank), blank(row.average), blank(row.grade)]),
         columnStyles: { 0: { cellWidth: 11 }, 1: { cellWidth: 22 }, 2: { cellWidth: 62, halign: 'left' } }
       })));
-      subjectBookSignature(doc, sheet, (doc.lastAutoTable?.finalY || y));
+      subjectBookSignature(doc, sheet, (doc.lastAutoTable?.finalY || y), meta);
     }
   }
 
@@ -2728,7 +2773,7 @@
         ['ดีเยี่ยม\n(3)', 'ดี\n(2)', 'ผ่าน\n(1)', 'ไม่ผ่าน\n(0)']],
       columnStyles: { 0: { cellWidth: 11 }, 1: { cellWidth: 22 }, 2: { cellWidth: 58, halign: 'left' }, 7: { cellWidth: 24 } }
     });
-    subjectBookSignature(doc, sheet, doc.lastAutoTable?.finalY || y);
+    subjectBookSignature(doc, sheet, doc.lastAutoTable?.finalY || y, meta);
   }
 
   function drawPp5SubjectCharacterPage(doc, report, sheet, meta, newPage) {
@@ -2749,7 +2794,7 @@
     doc.setFontSize(8);
     doc.text(`* ${PP5_CHARACTERISTICS.map((name, i) => `${i + 1} ${name}`).join(' · ')}`, 12, endY + 4.5, { maxWidth: doc.internal.pageSize.getWidth() - 24 });
     doc.text('* ระดับ 3 = ดีเยี่ยม 2 = ดี 1 = ผ่าน 0 = ไม่ผ่าน · สรุปผลจากค่าเฉลี่ย 8 ข้อ', 12, endY + 9);
-    subjectBookSignature(doc, sheet, endY + 10);
+    subjectBookSignature(doc, sheet, endY + 10, meta);
   }
 
   async function createPp5SubjectCover(report, options) {
@@ -2763,19 +2808,25 @@
     const parts = { cover: true, scores: false, rtw: false, character: false, ...(report?.parts || {}) };
     let started = false;
     const newPage = () => { if (started) doc.addPage(); started = true; };
-    sheets.forEach((sheet) => {
+    // options.onProgress(done, total) ไม่บังคับ: แถบความคืบหน้า — รอหนึ่งจังหวะระหว่างวิชาให้หน้าจอวาดแถบใหม่ได้
+    const onProgress = typeof options?.onProgress === 'function' ? options.onProgress : null;
+    const tick = (done) => { if (!onProgress) return null; try { onProgress(done, sheets.length); } catch (_) { /* ignore */ } return new Promise((resolve) => setTimeout(resolve, 0)); };
+    for (const [index, sheet] of sheets.entries()) {
+      await tick(index);
       if (parts.cover) {
         newPage();
         drawPp5SubjectSheet(doc, report, sheet, meta, logo);
         if (sheet.attendance) { newPage(); drawPp5SubjectAttendance(doc, report, sheet, meta); }
         if (sheet.attendance && report.includeMonthly !== false) {
-          (sheet.attendance.months || []).forEach((month) => { newPage(); drawPp5SubjectMonthPage(doc, report, sheet, month, meta, logo); });
+          let yearHours = 0;
+          (sheet.attendance.months || []).forEach((month) => { newPage(); yearHours = drawPp5SubjectMonthPage(doc, report, sheet, month, meta, logo, yearHours); });
         }
       }
       if (parts.scores) drawPp5SubjectScorePages(doc, report, sheet, meta, newPage);
       if (parts.rtw) drawPp5SubjectRtwPage(doc, report, sheet, meta, newPage);
       if (parts.character) drawPp5SubjectCharacterPage(doc, report, sheet, meta, newPage);
-    });
+    }
+    await tick(sheets.length);
     doc.setProperties({ title: 'แบบบันทึกผลการเรียนประจำรายวิชา', subject: meta.meta, author: meta.schoolName, creator: 'ระบบ ปพ.5 ออนไลน์' });
     const blobUrl = finish(doc, meta);
     const dataUri = doc.output('datauristring');
@@ -3047,7 +3098,7 @@
             columnStyles: {
               0: { cellWidth: 10 },
               1: { cellWidth: 20 },
-              2: { cellWidth: 54, halign: 'left' },
+              2: { cellWidth: 48, halign: 'left' },
               3: { cellWidth: 18 },
               4: { cellWidth: 18 },
               5: { cellWidth: 18 },
@@ -3066,6 +3117,12 @@
           const pWidth = doc.internal.pageSize.getWidth();
           const teacherName = text(sub.teacher_name || meta.classTeacher || '................................................');
           const directorName = text(meta.directorName || '................................................');
+          // ลายเซ็นครู = ลายเซ็นครูประจำชั้นที่อัปโหลดไว้ ใช้เฉพาะเมื่อผู้สอนวิชานี้คือครูประจำชั้น (ครูวิชาอื่นยังไม่มีลายเซ็นในระบบ)
+          const homeroomTeaches = !text(sub.teacher_name) || text(sub.teacher_name) === text(meta.classTeacher);
+          // ลายเซ็นที่ครูผู้สอนอัปโหลดเอง (SQL 042) มาก่อน · ไม่มีจึงใช้ของครูประจำชั้นเมื่อครูประจำชั้นสอนเอง
+          drawSignatureImage(doc, meta, sub.teacher_signature || (homeroomTeaches ? meta.teacherSignature : ''), pWidth * 0.3 - 6, ySig);
+          drawSchoolStamp(doc, meta, pWidth * 0.7 + 14, ySig - 6);
+          drawSignatureImage(doc, meta, meta.directorSignature, pWidth * 0.7 - 8, ySig);
           doc.setFont('Sarabun', 'normal');
           doc.setFontSize(8.5);
           doc.text('ลงชื่อ...............................................ครูผู้สอน', pWidth * 0.3, ySig, { align: 'center' });
@@ -4128,6 +4185,9 @@
     const teacherName = text(report?.teacherName || meta.homeroomTeacher || '....................................................');
     const directorName = text(meta.directorName || '....................................................');
 
+    drawSignatureImage(doc, meta, meta.teacherSignature || report?.teacherSignature, col1, sigY, 26);
+    drawSchoolStamp(doc, meta, col2 + 24, sigY, 15);
+    drawSignatureImage(doc, meta, meta.directorSignature || report?.directorSignature, col2, sigY, 26);
     doc.setFont('Sarabun', 'normal');
     doc.setFontSize(8);
     doc.text('ลงชื่อ................................................', col1, sigY, { align: 'center' });

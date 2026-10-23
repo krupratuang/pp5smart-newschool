@@ -2244,7 +2244,8 @@
   const attendanceFullHours = (hours, semester, ownSemester) => (!hours ? 0 : semester && !ownSemester ? hours / 2 : hours);
   const roundTenth = (value) => Math.round(value * 10) / 10;
 
-  async function computePp5SubjectSheets(grade, classNo, students, subjectId, requestedYear, teacherOverrides) {
+  // onProgress(done, total) ไม่บังคับ: แถบความคืบหน้าของหน้า ปพ.5 แบบรายวิชา (owner 2026-10-23 "ขอเป็นแถบเปอร์เซ็นต์ 1-100")
+  async function computePp5SubjectSheets(grade, classNo, students, subjectId, requestedYear, teacherOverrides, onProgress) {
     const settings = await data.settings.get();
     const academicYear = text(requestedYear || settings.academicYear || settings.academic_year || '');
     const roomTeachers = savedRoomTeachers(settings, academicYear);
@@ -2361,14 +2362,22 @@
     const dailyFillRows = async (subject, hourlyRows, att) => {
       const weeks = await weeksOf(subject);
       if (!weeks.size) return [];
-      const taught = new Set(hourlyRows.map((row) => normalizeDate(row.attendance_date)));
+      // คาบที่เช็ครายคาบแล้วของแต่ละวัน — วันที่เช็คไม่ครบ คาบที่เหลือก็ใช้รายวันแทน (owner 2026-10-22)
+      const taught = new Map();
+      hourlyRows.forEach((row) => {
+        const d = normalizeDate(row.attendance_date);
+        if (!taught.has(d)) taught.set(d, new Set());
+        taught.get(d).add(number(row.period, 1) || 1);
+      });
       const inRoom = new Set(studentIdsForHours);
       const out = [];
       (att.rows || []).forEach((row) => {
         const date = row.attendance_date;
-        if (taught.has(date) || !inRoom.has(text(row.student_id))) return;
+        if (!inRoom.has(text(row.student_id))) return;
         const n = weeks.get(semesterOfDate(date))?.get(isoWeekday(date)) || 0;
+        const done = taught.get(date) || new Set();
         for (let p = 1; p <= n; p += 1) {
+          if (done.has(p)) continue;
           out.push({ student_id: text(row.student_id), subject_id: text(subject.id), attendance_date: date, period: p, hours: 1, status: row.status, fromDaily: true });
         }
       });
@@ -2395,6 +2404,7 @@
       const filled = await dailyFillRows(subject, rows, att);
       if (filled.length) rows = rows.concat(filled);
       const filledDays = new Set(filled.map((row) => row.attendance_date)).size;
+      const filledSlots = new Set(filled.map((row) => `${row.attendance_date}#${row.period}`)).size;
       // ชั่วโมงที่สอน = ผลรวมของทุกคาบ (SQL 032: 1 แถวต่อคาบ hours = 1) · schoolDays = จำนวนวันที่สอน
       const taughtByDate = new Map();
       const taughtDays = new Set();
@@ -2429,7 +2439,7 @@
       return {
         months: attendanceMonths(rows.map((row) => ({ date: normalizeDate(row.attendance_date), sid: text(row.student_id), status: text(row.status), hours: row.hours, period: row.period })), true),
         mode: 'hourly', first: att.first, last: att.last, schoolDays: taughtDays.size, filledDays,
-        note: filledDays ? `คิดจากการเช็คชื่อรายคาบของวิชานี้ วันที่ยังไม่ได้เช็ครายคาบ ${filledDays} วัน ใช้เช็คชื่อรายวันของห้องแทนทุกคาบตามตารางสอน` : '',
+        note: filledDays ? `คิดจากการเช็คชื่อรายคาบของวิชานี้ คาบตามตารางสอนที่ยังไม่ได้เช็ครายคาบ (${filledSlots} คาบ ใน ${filledDays} วัน) ใช้เช็คชื่อรายวันของห้องแทน` : '',
         taughtHours: [...taughtByDate.values()].reduce((a, b) => a + b, 0), hours, fullHours, students: list,
         over: list.filter((row) => row.pct !== null && !row.below).length,
         under: list.filter((row) => row.below).length,
@@ -2639,7 +2649,10 @@
     });
 
     const sheets = [];
+    let progressDone = 0;
     for (const item of chosen) {
+      if (typeof onProgress === 'function') { try { onProgress(progressDone, chosen.length); } catch (_) { /* แถบสถานะพังไม่ทำให้งานพัง */ } }
+      progressDone += 1;
       const subject = details.get(text(item.id)) || item;
       const group = pp5SubjectGroup(subject);
       const own = await subjectOwn(item.id);
@@ -2682,7 +2695,13 @@
   async function generatePp5SubjectCoverPdf(grade, classNo, subjectId, teacherOverrides, printOptions) {
     const students = await data.students.list({ grade, room: classNo });
     if (!students.length) throw new Error('ไม่พบข้อมูลนักเรียน');
-    const report = await computePp5SubjectSheets(grade, classNo, students, subjectId, '', teacherOverrides);
+    // ความคืบหน้า: อ่านข้อมูล 5-65% (ทีละวิชา) · สร้างหน้า PDF 70-97% (ทีละวิชา) · เสร็จ 100%
+    const tell = typeof printOptions?.onProgress === 'function' ? printOptions.onProgress : null;
+    const say = (pct, label) => { if (tell) { try { tell(Math.round(pct), label); } catch (_) { /* ignore */ } } };
+    say(3, 'กำลังอ่านรายชื่อนักเรียนและรายวิชา');
+    const report = await computePp5SubjectSheets(grade, classNo, students, subjectId, '', teacherOverrides,
+      (done, total) => say(5 + (60 * done) / Math.max(1, total), `กำลังอ่านคะแนนและเวลาเรียน วิชาที่ ${done + 1}/${total}`));
+    say(66, 'กำลังเตรียมหัวกระดาษและลายเซ็น');
     const options = await attendancePrintOptions(grade, classNo, 'แบบบันทึกผลการเรียนประจำรายวิชา');
     const settings = await data.settings.get();
     if (!global.PP5PDF?.createPp5SubjectCover) throw new Error('ยังโหลดตัวสร้าง PDF ไม่ครบ กรุณารีเฟรชหน้า');
@@ -2690,7 +2709,10 @@
     const asked = printOptions?.parts && typeof printOptions.parts === 'object' ? printOptions.parts : {};
     const parts = { cover: asked.cover !== false, scores: asked.scores === true, rtw: asked.rtw === true, character: asked.character === true };
     if (!Object.values(parts).some(Boolean)) throw new Error('เลือกอย่างน้อย 1 ส่วนที่จะพิมพ์');
-    const result = await global.PP5PDF.createPp5SubjectCover({ grade, classNo, schoolAddress: text(settings.schoolAddress || settings.school_address), includeMonthly, parts, ...report }, options);
+    (report.sheets || []).forEach((sheet) => { sheet.teacherSignature = signatureOfName_(options.staffSignatures || new Map(), sheet.teacher); });
+    const result = await global.PP5PDF.createPp5SubjectCover({ grade, classNo, schoolAddress: text(settings.schoolAddress || settings.school_address), includeMonthly, parts, ...report },
+      tell ? { ...options, onProgress: (done, total) => say(done >= total ? 98 : 70 + (27 * done) / Math.max(1, total), done >= total ? 'กำลังรวมไฟล์ PDF' : `กำลังสร้างหน้า PDF วิชาที่ ${done + 1}/${total}`) } : options);
+    say(100, 'สร้าง PDF เสร็จแล้ว');
     return typeof result === 'object' && result?.blobUrl ? result.blobUrl : (typeof result === 'object' && result?.dataUri ? result.dataUri : result);
   }
 
@@ -2943,6 +2965,7 @@
       competency = assessed.competency.students;
     }
 
+    subjects.forEach((sub) => { sub.teacher_signature = signatureOfName_(options.staffSignatures || new Map(), sub.teacher_name || sub.teacherName); });
     const fullBookPayload = {
       grade,
       classNo,
@@ -4488,6 +4511,7 @@
       teacherSigs.default ||
       (typeof teacherSigs === 'string' ? teacherSigs : '') ||
       sigSettings.teacher || '';
+    const ownSignatures = await staffSignatures_();
     const includeSignatures = sigSettings.includeSignatures !== false;
 
     return {
@@ -4507,11 +4531,14 @@
       academicYear: text(requestedYear || settings.academicYear || settings.academic_year),
       directorName: text(settings.directorName || settings.director_name),
       directorPosition: text(settings.director_position || settings.directorPosition || 'ผู้อำนวยการโรงเรียน'),
-      teacherSignature,
+      // ลายเซ็นครูประจำชั้น: ที่ผู้ดูแลอัปโหลดให้ห้องนี้ก่อน ไม่มีจึงใช้ลายเซ็นของครูคนนั้นเอง (โปรไฟล์ของฉัน)
+      teacherSignature: teacherSignature || signatureOfName_(ownSignatures, classTeacher),
       academicHeadSignature,
       directorSignature,
       schoolStamp,
-      includeSignatures
+      includeSignatures,
+      // ลายเซ็นของครูทุกคนที่อัปโหลดเอง (ชื่อ -> รูป) สำหรับช่อง "ครูผู้สอน"
+      staffSignatures: ownSignatures
     };
   }
 
@@ -5209,6 +5236,24 @@
       throw err;
     }
   }
+
+  // ลายเซ็นของครูแต่ละคน (owner 2026-10-23 "อยากให้ครูแต่ละคนอัปโหลดลายเซ็นตัวเองได้", SQL 202610230042 pp5_staff_signatures):
+  // จับคู่กับชื่อในเอกสารโดยตัดคำนำหน้าและช่องว่าง · ยังไม่ได้รัน SQL / อ่านไม่ได้ = ไม่มี (เอกสารเป็นเส้นจุดเหมือนเดิม)
+  // ชื่อที่แสดงจริงของโรงเรียนขึ้นต้นด้วย "คุณครู" / "ผอ." (ตรวจฐานข้อมูล 2026-10-23) จึงตัดคำเหล่านี้ด้วย
+  const SIGNATURE_NAME_TITLES = /^(ว่าที่\s*ร(้อยตรี|\.ต\.)\s*|คุณครู|ผอ\.?|นางสาว|นาง|นาย|ครู|ดร\.|mrs?\.?|ms\.?)/i;
+  function signatureNameKey_(name) {
+    let n = text(name).replace(/\s+/g, '');
+    for (let i = 0; i < 3; i += 1) n = n.replace(SIGNATURE_NAME_TITLES, '');
+    return n.toLowerCase();
+  }
+  async function staffSignatures_() {
+    try {
+      const { data, error } = await client.rpc('pp5_staff_signatures');
+      if (error) return new Map();
+      return new Map((data || []).filter((row) => text(row.image)).map((row) => [signatureNameKey_(row.display_name), text(row.image)]));
+    } catch (_) { return new Map(); }
+  }
+  const signatureOfName_ = (map, name) => (signatureNameKey_(name) && map.get(signatureNameKey_(name))) || '';
 
   async function getSchoolSignatures() {
     let sigMap = {};
